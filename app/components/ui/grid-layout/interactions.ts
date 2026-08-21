@@ -26,6 +26,7 @@ export type GridMeasurement = {
 export type GridInteractionReason = "move" | "resize"
 
 export type GridPointerPreview = {
+  baseItem: GridGeometryItem
   gridDelta: { columns: number; rows: number }
   itemId: string
   measurement: GridMeasurement
@@ -163,6 +164,8 @@ export function useGridInteraction(
       const start = { x: event.clientX, y: event.clientY }
       const measurement = context.measurement()
       const base = context.layout.map((item) => ({ ...item }))
+      const baseItem = base.find((item) => item.id === id)
+      if (!baseItem) throw new Error(`Unknown Grid Layout item: ${id}`)
       session.current = { base, draft: base, changed: false }
 
       const onMove = (moveEvent: PointerEvent) => {
@@ -181,6 +184,7 @@ export function useGridInteraction(
         if (frame.current !== null) cancelAnimationFrame(frame.current)
         frame.current = requestAnimationFrame(() =>
           context.preview(next, {
+            baseItem,
             gridDelta: delta,
             itemId: id,
             measurement,

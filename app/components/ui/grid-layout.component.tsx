@@ -91,7 +91,9 @@ export function Dashboard() {
           const item = canvasElement.querySelector<HTMLElement>(
             '[data-grid-layout-id="revenue"]'
           )
-          if (!item) throw new Error("Revenue grid item was not rendered")
+          if (!item) {
+            throw new Error("Revenue grid item was not rendered")
+          }
           await userEvent.click(handle)
           await userEvent.keyboard("{Enter}{ArrowDown}")
           await expect(item.getAnimations()).toHaveLength(0)
@@ -122,9 +124,134 @@ export function Dashboard() {
             requestAnimationFrame(() => resolve())
           )
           const itemDuringPointer = item.getBoundingClientRect()
-          await expect(item.getAnimations()).not.toHaveLength(0)
+          await expect(item.style.transform).not.toBe("")
           await expect(itemDuringPointer.left - itemBeforePointer.left).toBe(20)
           await expect(itemDuringPointer.top - itemBeforePointer.top).toBe(14)
+          await userEvent.pointer({ keys: "[/MouseLeft]" })
+
+          const resizeHandle = canvas.getByRole("button", {
+            name: "Resize Revenue",
+          })
+          const resizeRect = resizeHandle.getBoundingClientRect()
+          const itemBeforeResize = item.getBoundingClientRect()
+          await userEvent.pointer([
+            {
+              keys: "[MouseLeft>]",
+              target: resizeHandle,
+              coords: { x: resizeRect.left + 4, y: resizeRect.top + 4 },
+            },
+            { coords: { x: resizeRect.left + 22, y: resizeRect.top + 18 } },
+          ])
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve())
+          )
+          const itemDuringResize = item.getBoundingClientRect()
+          await expect(itemDuringResize.width - itemBeforeResize.width).toBe(18)
+          await expect(itemDuringResize.height - itemBeforeResize.height).toBe(
+            14
+          )
+          await userEvent.pointer({ keys: "[/MouseLeft]" })
+        },
+      },
+    },
+    {
+      id: "pointer-reflow",
+      title: "Pointer reflow",
+      fixed: { collision: "push", editable: true },
+      docs: false,
+      storybook: {
+        parameters: { viewport: { defaultViewport: "desktop" } },
+        play: async ({ canvas, canvasElement, userEvent }) => {
+          const { expect } = await import("storybook/test")
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+          )
+          const grid = canvas.getByLabelText("Dashboard layout")
+          const item = canvasElement.querySelector<HTMLElement>(
+            '[data-grid-layout-id="revenue"]'
+          )
+          const resizeHandle = canvas.getByRole("button", {
+            name: "Resize Revenue",
+          })
+          if (!item) throw new Error("Revenue grid item was not rendered")
+
+          const gap = Number.parseFloat(
+            getComputedStyle(grid).getPropertyValue("--grid-layout-gap")
+          )
+          const columns =
+            grid.dataset.profile === "wide"
+              ? 12
+              : grid.dataset.profile === "medium"
+                ? 6
+                : 1
+          const columnStep =
+            (grid.clientWidth - gap * (columns - 1)) / columns + gap
+          const rowStep =
+            Number.parseFloat(
+              getComputedStyle(grid).getPropertyValue(
+                "--grid-layout-row-height"
+              )
+            ) + gap
+          const peerMotions = ["filters", "activity"].map((id) => {
+            const node = canvasElement.querySelector<HTMLElement>(
+              `[data-grid-layout-id="${id}"][data-slot="grid-layout-item"]`
+            )
+            if (!node) throw new Error(`${id} grid item was not rendered`)
+            return node
+          })
+          const itemGridSizeBefore = {
+            height: item.parentElement?.style.getPropertyValue(
+              "--grid-layout-height"
+            ),
+            width: item.parentElement?.style.getPropertyValue(
+              "--grid-layout-width"
+            ),
+          }
+          const peerRowsBefore = peerMotions.map((node) =>
+            node.parentElement?.style.getPropertyValue("--grid-layout-row")
+          )
+          const itemBefore = item.getBoundingClientRect()
+          const handleRect = resizeHandle.getBoundingClientRect()
+          await userEvent.pointer([
+            {
+              keys: "[MouseLeft>]",
+              target: resizeHandle,
+              coords: { x: handleRect.left + 4, y: handleRect.top + 4 },
+            },
+            {
+              coords: {
+                x:
+                  handleRect.left + (columns === 1 ? 0 : columnStep * 1.25) + 4,
+                y: handleRect.top + (columns === 1 ? rowStep * 1.25 : 0) + 4,
+              },
+            },
+          ])
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve())
+          )
+
+          const itemDuring = item.getBoundingClientRect()
+          const peerRowsDuring = peerMotions.map((node) =>
+            node.parentElement?.style.getPropertyValue("--grid-layout-row")
+          )
+          const itemGridSizeDuring = {
+            height: item.parentElement?.style.getPropertyValue(
+              "--grid-layout-height"
+            ),
+            width: item.parentElement?.style.getPropertyValue(
+              "--grid-layout-width"
+            ),
+          }
+          await expect(
+            columns === 1
+              ? itemDuring.height - itemBefore.height
+              : itemDuring.width - itemBefore.width
+          ).toBeCloseTo((columns === 1 ? rowStep : columnStep) * 1.25, 1)
+          await expect(itemGridSizeDuring).not.toEqual(itemGridSizeBefore)
+          await expect(peerRowsDuring).not.toEqual(peerRowsBefore)
+          await expect(
+            peerMotions.some((node) => node.getAnimations().length > 0)
+          ).toBe(true)
           await userEvent.pointer({ keys: "[/MouseLeft]" })
         },
       },
