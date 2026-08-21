@@ -60,6 +60,11 @@ export function Dashboard() {
         markdown:
           "Use `GridLayout.Static` when the same persisted layout should render without editing controls.",
       },
+      {
+        title: "CSS variables",
+        markdown:
+          "Set `--grid-layout-row-height` and `--grid-layout-gap` on the root to customize its geometry. Each item exposes `--grid-layout-column`, `--grid-layout-row`, `--grid-layout-width`, and `--grid-layout-height` for styling and inspection.",
+      },
     ],
   },
   controls: {

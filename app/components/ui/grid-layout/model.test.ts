@@ -89,6 +89,20 @@ describe("Grid Layout persistence", () => {
     })
   })
 
+  it("applies item constraints during reconciliation and rejects impossible ranges", () => {
+    expect(
+      reconcileGridLayout(undefined, [
+        { id: "revenue", minWidth: 6, maxWidth: 8, maxHeight: 2 },
+      ]).items.revenue
+    ).toEqual({ column: 0, row: 0, width: 6, height: 2 })
+
+    expect(() =>
+      reconcileGridLayout(undefined, [
+        { id: "revenue", minWidth: 5, maxWidth: 4 },
+      ])
+    ).toThrow("Grid Layout minWidth cannot exceed maxWidth")
+  })
+
   it("derives narrower profiles and applies only their sparse overrides", () => {
     const value = {
       version: 1 as const,

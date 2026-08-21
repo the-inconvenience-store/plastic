@@ -1,7 +1,9 @@
 import {
   compactLayout,
+  constrainPlacement,
   projectPlacement,
   type GridGeometryItem,
+  type GridItemConstraints,
   type GridPlacement,
 } from "./geometry"
 
@@ -14,7 +16,7 @@ export type GridLayoutValue = {
   items: Record<string, GridLayoutItemValue>
 }
 
-export type GridLayoutItemDefinition = {
+export type GridLayoutItemDefinition = GridItemConstraints & {
   id: string
   initial?: Partial<GridPlacement>
 }
@@ -53,6 +55,11 @@ function validateInput(
       throw new Error(`Duplicate Grid Layout item id: "${definition.id}"`)
     }
     ids.add(definition.id)
+    constrainPlacement(
+      { column: 0, row: 0, width: 1, height: 1 },
+      CANONICAL_COLUMNS,
+      definition
+    )
     for (const [key, minimum] of [
       ["column", 0],
       ["row", 0],
@@ -126,38 +133,37 @@ export function reconcileGridLayout(
 ): GridLayoutValue {
   validateInput(value, definitions)
   const items = { ...(value?.items ?? {}) }
-  const occupied = definitions.flatMap(({ id }) => {
-    const item = items[id]
+  const occupied = definitions.flatMap((definition) => {
+    const item = items[definition.id]
     if (!item) return []
-    const width = Math.min(CANONICAL_COLUMNS, item.width)
     const normalized = {
       ...item,
-      width,
-      column: Math.min(CANONICAL_COLUMNS - width, item.column),
+      ...constrainPlacement(item, CANONICAL_COLUMNS, definition),
     }
-    items[id] = normalized
+    items[definition.id] = normalized
     return [normalized]
   })
 
   for (const definition of definitions) {
     if (items[definition.id]) continue
 
-    const width = Math.min(
+    const desired = {
+      column: definition.initial?.column ?? 0,
+      row: definition.initial?.row ?? 0,
+      width: definition.initial?.width ?? DEFAULT_WIDTH,
+      height: definition.initial?.height ?? DEFAULT_HEIGHT,
+    }
+    const constrained = constrainPlacement(
+      desired,
       CANONICAL_COLUMNS,
-      Math.max(1, definition.initial?.width ?? DEFAULT_WIDTH)
+      definition
     )
-    const height = Math.max(1, definition.initial?.height ?? DEFAULT_HEIGHT)
     const hasPosition =
       definition.initial?.column !== undefined &&
       definition.initial.row !== undefined
     const placement = hasPosition
-      ? {
-          column: definition.initial?.column ?? 0,
-          row: definition.initial?.row ?? 0,
-          width,
-          height,
-        }
-      : findFirstAvailable(occupied, width, height)
+      ? constrained
+      : findFirstAvailable(occupied, constrained.width, constrained.height)
 
     items[definition.id] = placement
     occupied.push(placement)
@@ -187,26 +193,20 @@ export function resolveProfileLayout(
 ): GridGeometryItem[] {
   const reconciled = reconcileGridLayout(value, definitions)
 
-  const projected = definitions.map(({ id }) => {
+  const projected = definitions.map((definition) => {
+    const { id } = definition
     const item = reconciled.items[id]
     const projected = projectPlacement(item, CANONICAL_COLUMNS, profile.columns)
     const override = item.overrides?.[profile.id]
-    const width = Math.min(
+    const constrained = constrainPlacement(
+      { ...projected, ...override },
       profile.columns,
-      Math.max(1, override?.width ?? projected.width)
-    )
-    const height = Math.max(1, override?.height ?? projected.height)
-    const column = Math.min(
-      profile.columns - width,
-      Math.max(0, override?.column ?? projected.column)
+      definition
     )
 
     return {
       id,
-      column,
-      row: Math.max(0, override?.row ?? projected.row),
-      width,
-      height,
+      ...constrained,
     }
   })
 

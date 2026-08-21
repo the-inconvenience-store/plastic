@@ -49,15 +49,13 @@ export function GridLayoutDemo({
             <CardHeader>
               <CardTitle>Revenue</CardTitle>
               <CardDescription>Last 30 days</CardDescription>
-              {editable ? (
-                <CardAction>
-                  <GridLayout.DragHandle
-                    render={<Button variant="ghost" size="icon-sm" />}
-                  >
-                    <span aria-hidden="true">⋮⋮</span>
-                  </GridLayout.DragHandle>
-                </CardAction>
-              ) : null}
+              <CardAction>
+                <GridLayout.DragHandle
+                  render={<Button variant="ghost" size="icon-sm" />}
+                >
+                  <span aria-hidden="true">⋮⋮</span>
+                </GridLayout.DragHandle>
+              </CardAction>
             </CardHeader>
             <CardContent className="text-3xl font-semibold">
               $48,290

@@ -128,8 +128,6 @@ type GridLayoutContextValue = {
   nodes: Map<string, HTMLDivElement>
   preview: (layout: GridGeometryItem[]) => void
   profile: GridLayoutProfile
-  rowHeight: number
-  gap: number
   resetPreview: () => void
   setAnnouncement: (message: string) => void
 }
@@ -203,19 +201,18 @@ function containsDragHandle(children: ReactNode): boolean {
 
 function placementStyle(
   item: GridGeometryItem,
-  profile: GridLayoutProfile,
-  rowHeight: number,
-  gap: number
+  profile: GridLayoutProfile
 ): CSSProperties {
+  const gutters = profile.columns - 1
   return {
     "--grid-layout-column": item.column,
     "--grid-layout-row": item.row,
     "--grid-layout-width": item.width,
     "--grid-layout-height": item.height,
-    left: `calc(var(--grid-layout-column) * ((100% - ${(profile.columns - 1) * gap}px) / ${profile.columns} + ${gap}px))`,
-    top: `calc(var(--grid-layout-row) * (${rowHeight}px + ${gap}px))`,
-    width: `calc(var(--grid-layout-width) * ((100% - ${(profile.columns - 1) * gap}px) / ${profile.columns}) + (var(--grid-layout-width) - 1) * ${gap}px)`,
-    height: `calc(var(--grid-layout-height) * ${rowHeight}px + (var(--grid-layout-height) - 1) * ${gap}px)`,
+    left: `calc(var(--grid-layout-column) * ((100% - ${gutters} * var(--grid-layout-gap)) / ${profile.columns} + var(--grid-layout-gap)))`,
+    top: `calc(var(--grid-layout-row) * (var(--grid-layout-row-height) + var(--grid-layout-gap)))`,
+    width: `calc(var(--grid-layout-width) * ((100% - ${gutters} * var(--grid-layout-gap)) / ${profile.columns}) + (var(--grid-layout-width) - 1) * var(--grid-layout-gap))`,
+    height: `calc(var(--grid-layout-height) * var(--grid-layout-row-height) + (var(--grid-layout-height) - 1) * var(--grid-layout-gap))`,
   } as CSSProperties
 }
 
@@ -246,7 +243,16 @@ function GridLayoutRoot({
     () => collectItemConfigurations(children),
     [children]
   )
-  const definitions = configurations.map(({ id, initial }) => ({ id, initial }))
+  const definitions = configurations.map(
+    ({ id, initial, minWidth, maxWidth, minHeight, maxHeight }) => ({
+      id,
+      initial,
+      minWidth,
+      maxWidth,
+      minHeight,
+      maxHeight,
+    })
+  )
   const configuration = useMemo(
     () => new Map(configurations.map((item) => [item.id, item])),
     [configurations]
@@ -296,21 +302,17 @@ function GridLayoutRoot({
     (nextLayout: GridGeometryItem[]) => {
       for (const item of nextLayout) {
         const node = nodes.get(item.id)
-        if (node)
-          Object.assign(
-            node.style,
-            placementStyle(item, profile, rowHeight, gap)
-          )
+        if (node) Object.assign(node.style, placementStyle(item, profile))
       }
       const bottom = Math.max(
         0,
         ...nextLayout.map((item) => item.row + item.height)
       )
       if (containerRef.current) {
-        containerRef.current.style.height = `${bottom * rowHeight + Math.max(0, bottom - 1) * gap}px`
+        containerRef.current.style.height = `calc(${bottom} * var(--grid-layout-row-height) + ${Math.max(0, bottom - 1)} * var(--grid-layout-gap))`
       }
     },
-    [gap, nodes, profile, rowHeight]
+    [nodes, profile]
   )
 
   const commit = useCallback(
@@ -338,18 +340,28 @@ function GridLayoutRoot({
       editable,
       layout: resolved,
       measurement: () => {
-        const width = containerRef.current?.clientWidth ?? 0
+        const container = containerRef.current
+        const width = container?.clientWidth ?? 0
+        const computed = container ? getComputedStyle(container) : null
+        const measuredGap = Number.parseFloat(
+          computed?.getPropertyValue("--grid-layout-gap") ?? ""
+        )
+        const measuredRowHeight = Number.parseFloat(
+          computed?.getPropertyValue("--grid-layout-row-height") ?? ""
+        )
+        const activeGap = Number.isFinite(measuredGap) ? measuredGap : gap
         return {
-          columnWidth: (width - gap * (profile.columns - 1)) / profile.columns,
-          rowHeight,
-          gap,
+          columnWidth:
+            (width - activeGap * (profile.columns - 1)) / profile.columns,
+          rowHeight: Number.isFinite(measuredRowHeight)
+            ? measuredRowHeight
+            : rowHeight,
+          gap: activeGap,
         }
       },
       nodes,
       preview: applyPreview,
       profile,
-      rowHeight,
-      gap,
       resetPreview: () => applyPreview(resolved),
       setAnnouncement,
     }),
@@ -367,7 +379,7 @@ function GridLayoutRoot({
     ]
   )
   const bottom = Math.max(0, ...resolved.map((item) => item.row + item.height))
-  const height = bottom * rowHeight + Math.max(0, bottom - 1) * gap
+  const height = `calc(${bottom} * var(--grid-layout-row-height) + ${Math.max(0, bottom - 1)} * var(--grid-layout-gap))`
 
   return (
     <GridContext value={context}>
@@ -377,7 +389,14 @@ function GridLayoutRoot({
         data-profile={profile.id}
         data-editable={editable ? "" : undefined}
         className={cn("relative w-full", className)}
-        style={{ ...style, height }}
+        style={
+          {
+            "--grid-layout-row-height": `${rowHeight}px`,
+            "--grid-layout-gap": `${gap}px`,
+            ...style,
+            height,
+          } as CSSProperties
+        }
         {...rootProps}
       >
         {children}
@@ -466,21 +485,21 @@ function useGridInteraction(id: string, reason: GridInteractionReason) {
         frame.current = requestAnimationFrame(() => context.preview(next))
       }
 
-      const finish = () => {
+      const cleanup = () => {
         window.removeEventListener("pointermove", onMove)
         window.removeEventListener("pointerup", finish)
         window.removeEventListener("pointercancel", cancel)
         if (frame.current !== null) cancelAnimationFrame(frame.current)
+      }
+      const finish = () => {
+        cleanup()
         const current = session.current
         session.current = null
         if (current?.changed) context.commit(current.draft, id, reason)
         else context.resetPreview()
       }
       const cancel = () => {
-        window.removeEventListener("pointermove", onMove)
-        window.removeEventListener("pointerup", finish)
-        window.removeEventListener("pointercancel", cancel)
-        if (frame.current !== null) cancelAnimationFrame(frame.current)
+        cleanup()
         session.current = null
         context.resetPreview()
       }
@@ -566,10 +585,12 @@ function GridLayoutDragHandle({
   className,
   ...props
 }: GridLayoutDragHandleProps) {
+  const grid = requireGridContext()
   const { id, label } = requireItemContext()
   const interaction = useGridInteraction(id, "move")
 
   return useRender({
+    enabled: grid.editable,
     defaultTagName: "button",
     render,
     props: {
@@ -636,12 +657,7 @@ function GridLayoutItem({
         data-locked={locked ? "" : undefined}
         className={cn("absolute", className)}
         style={{
-          ...placementStyle(
-            placement,
-            context.profile,
-            context.rowHeight,
-            context.gap
-          ),
+          ...placementStyle(placement, context.profile),
           ...style,
         }}
         {...props}

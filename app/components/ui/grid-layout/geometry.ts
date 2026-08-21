@@ -28,6 +28,55 @@ export type GridItemConstraints = {
   maxHeight?: number
 }
 
+export function validateGridItemConstraints(constraints: GridItemConstraints) {
+  for (const [name, value] of [
+    ["minWidth", constraints.minWidth],
+    ["maxWidth", constraints.maxWidth],
+    ["minHeight", constraints.minHeight],
+    ["maxHeight", constraints.maxHeight],
+  ] as const) {
+    if (value !== undefined && (!Number.isInteger(value) || value < 1)) {
+      throw new Error(`Grid Layout ${name} must be a positive integer`)
+    }
+  }
+  if (
+    constraints.minWidth !== undefined &&
+    constraints.maxWidth !== undefined &&
+    constraints.minWidth > constraints.maxWidth
+  ) {
+    throw new Error("Grid Layout minWidth cannot exceed maxWidth")
+  }
+  if (
+    constraints.minHeight !== undefined &&
+    constraints.maxHeight !== undefined &&
+    constraints.minHeight > constraints.maxHeight
+  ) {
+    throw new Error("Grid Layout minHeight cannot exceed maxHeight")
+  }
+}
+
+export function constrainPlacement(
+  placement: GridPlacement,
+  columns: number,
+  constraints: GridItemConstraints = {}
+): GridPlacement {
+  validateGridItemConstraints(constraints)
+  const minimumWidth = Math.min(columns, constraints.minWidth ?? 1)
+  const maximumWidth = Math.min(columns, constraints.maxWidth ?? columns)
+  const width = Math.min(maximumWidth, Math.max(minimumWidth, placement.width))
+  const height = Math.min(
+    constraints.maxHeight ?? Number.POSITIVE_INFINITY,
+    Math.max(constraints.minHeight ?? 1, placement.height)
+  )
+
+  return {
+    column: Math.min(columns - width, Math.max(0, placement.column)),
+    row: Math.max(0, placement.row),
+    width,
+    height,
+  }
+}
+
 function toLayout(items: readonly GridGeometryItem[]): Layout {
   return items.map((item) => ({
     i: item.id,
@@ -116,44 +165,19 @@ export function resolveResize(
   collision: GridCollision,
   constraints: GridItemConstraints = {}
 ): GridGeometryItem[] {
-  for (const [name, value] of Object.entries(constraints)) {
-    if (value !== undefined && (!Number.isInteger(value) || value < 1)) {
-      throw new Error(`Grid Layout ${name} must be a positive integer`)
-    }
-  }
-  if (
-    constraints.minWidth !== undefined &&
-    constraints.maxWidth !== undefined &&
-    constraints.minWidth > constraints.maxWidth
-  ) {
-    throw new Error("Grid Layout minWidth cannot exceed maxWidth")
-  }
-  if (
-    constraints.minHeight !== undefined &&
-    constraints.maxHeight !== undefined &&
-    constraints.minHeight > constraints.maxHeight
-  ) {
-    throw new Error("Grid Layout minHeight cannot exceed maxHeight")
-  }
-  if ((constraints.minWidth ?? 1) > columns) {
-    throw new Error(
-      "Grid Layout minWidth cannot exceed the active profile columns"
-    )
-  }
+  validateGridItemConstraints(constraints)
 
   const layout = toLayout(items)
   const item = getLayoutItem(layout, itemId)
   if (!item) throw new Error(`Unknown Grid Layout item: ${itemId}`)
 
-  const width = Math.min(
-    constraints.maxWidth ?? columns,
-    Math.max(constraints.minWidth ?? 1, size.width),
-    columns - item.x
+  const constrained = constrainPlacement(
+    { column: item.x, row: item.y, ...size },
+    columns,
+    constraints
   )
-  const height = Math.min(
-    constraints.maxHeight ?? Number.POSITIVE_INFINITY,
-    Math.max(constraints.minHeight ?? 1, size.height)
-  )
+  const width = Math.min(constrained.width, columns - item.x)
+  const height = constrained.height
   const resized = layout.map((layoutItem) =>
     layoutItem.i === itemId
       ? { ...layoutItem, w: width, h: height }

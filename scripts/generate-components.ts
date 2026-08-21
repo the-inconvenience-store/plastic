@@ -7,6 +7,7 @@ import { componentDocsConfig } from "../component-docs.config"
 import type { ComponentDoc } from "../component-docs/schema"
 
 type LoadedDoc = ComponentDoc<ElementType>
+type LoadedManifest = { doc: LoadedDoc; path: string }
 
 const root = resolve(import.meta.dirname, "..")
 const storybookDirectory = resolve(root, ".generated/storybook")
@@ -66,24 +67,25 @@ function generatedHeader() {
 
 async function loadDocs() {
   const glob = new Bun.Glob("app/components/**/*.component.tsx")
-  const docs: LoadedDoc[] = []
+  const manifests: LoadedManifest[] = []
 
   for await (const path of glob.scan({ cwd: root, onlyFiles: true })) {
     const url = `${pathToFileURL(resolve(root, path)).href}?generated=${Date.now()}`
     const module = (await import(url)) as { componentDoc?: LoadedDoc }
     if (!module.componentDoc)
       throw new Error(`${path} must export componentDoc`)
-    docs.push(module.componentDoc)
+    manifests.push({ doc: module.componentDoc, path })
   }
 
-  docs.sort(
+  manifests.sort(
     (left, right) =>
-      left.docs.order - right.docs.order || left.name.localeCompare(right.name)
+      left.doc.docs.order - right.doc.docs.order ||
+      left.doc.name.localeCompare(right.doc.name)
   )
 
   const names = new Set<string>()
   const slugs = new Set<string>()
-  for (const doc of docs) {
+  for (const { doc } of manifests) {
     if (names.has(doc.name))
       throw new Error(`Duplicate component name: ${doc.name}`)
     if (slugs.has(doc.docs.slug))
@@ -97,7 +99,7 @@ async function loadDocs() {
     })
   }
 
-  return docs
+  return manifests
 }
 
 function renderStorybook(doc: LoadedDoc, manifestPath: string) {
@@ -215,7 +217,8 @@ ${sections}
 `
 }
 
-async function writeGeneratedFiles(docs: LoadedDoc[]) {
+async function writeGeneratedFiles(manifests: LoadedManifest[]) {
+  const docs = manifests.map(({ doc }) => doc)
   await rm(storybookDirectory, { recursive: true, force: true })
   await rm(generatedStoryDirectory, { recursive: true, force: true })
   await rm(componentDirectory, { recursive: true, force: true })
@@ -223,22 +226,7 @@ async function writeGeneratedFiles(docs: LoadedDoc[]) {
   await mkdir(generatedStoryDirectory, { recursive: true })
   await mkdir(componentDirectory, { recursive: true })
 
-  const manifestGlob = new Bun.Glob("app/components/**/*.component.tsx")
-  const manifests = new Map<string, string>()
-  for await (const path of manifestGlob.scan({ cwd: root, onlyFiles: true })) {
-    const module = (await import(
-      `${pathToFileURL(resolve(root, path)).href}?mapping=${Date.now()}`
-    )) as {
-      componentDoc?: LoadedDoc
-    }
-    if (module.componentDoc) manifests.set(module.componentDoc.name, path)
-  }
-
-  for (const doc of docs) {
-    const manifestPath = manifests.get(doc.name)
-    if (!manifestPath)
-      throw new Error(`Cannot find manifest path for ${doc.name}`)
-
+  for (const { doc, path: manifestPath } of manifests) {
     const mdxPath = resolve(root, "content/docs", `${doc.docs.slug}.mdx`)
     await mkdir(dirname(mdxPath), { recursive: true })
     await Bun.write(
@@ -283,8 +271,8 @@ async function writeGeneratedFiles(docs: LoadedDoc[]) {
   )
 }
 
-const docs = await loadDocs()
-await writeGeneratedFiles(docs)
+const manifests = await loadDocs()
+await writeGeneratedFiles(manifests)
 
 if (Bun.argv.includes("--build-registry")) {
   const result = Bun.spawnSync(
@@ -303,5 +291,5 @@ if (Bun.argv.includes("--build-registry")) {
 }
 
 console.log(
-  `Generated documentation for ${docs.length} component${docs.length === 1 ? "" : "s"}.`
+  `Generated documentation for ${manifests.length} component${manifests.length === 1 ? "" : "s"}.`
 )
