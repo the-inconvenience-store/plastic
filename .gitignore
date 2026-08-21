@@ -1,1 +1,16 @@
 .DS_Store
+node_modules
+dist
+storybook-static
+public/r
+*.local
+.react-router
+build
+.source
+.cache
+.generated
+content/docs/components/*.mdx
+content/docs/components/meta.json
+content/docs/components/_generated
+
+*storybook.log

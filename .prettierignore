@@ -1,0 +1,14 @@
+node_modules/
+coverage/
+.cache/
+.generated/
+content/docs/components/_generated/
+app/.generated/
+content/docs/components/*.mdx
+content/docs/components/meta.json
+registry.json
+.pnpm-store/
+pnpm-lock.yaml
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
