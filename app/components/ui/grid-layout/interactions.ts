@@ -25,6 +25,14 @@ export type GridMeasurement = {
 
 export type GridInteractionReason = "move" | "resize"
 
+export type GridPointerPreview = {
+  gridDelta: { columns: number; rows: number }
+  itemId: string
+  measurement: GridMeasurement
+  pixelDelta: GridPixelDelta
+  reason: GridInteractionReason
+}
+
 export type GridResizeMode = "both" | "horizontal" | "vertical" | false
 
 export type GridInteractionConfiguration = GridItemConstraints & {
@@ -41,9 +49,10 @@ export type GridInteractionContext = {
   configuration: ReadonlyMap<string, GridInteractionConfiguration>
   layout: GridGeometryItem[]
   measurement: () => GridMeasurement
-  preview: (layout: GridGeometryItem[]) => void
+  preview: (layout: GridGeometryItem[], pointer?: GridPointerPreview) => void
   profile: GridLayoutProfile
   resetPreview: () => void
+  settlePreview: (layout: GridGeometryItem[], itemId: string) => void
   setAnnouncement: (message: string) => void
 }
 
@@ -74,6 +83,18 @@ export function pixelsToGridDelta(
   return {
     columns: Math.round(delta.x / (measurement.columnWidth + measurement.gap)),
     rows: Math.round(delta.y / (measurement.rowHeight + measurement.gap)),
+  }
+}
+
+export function getGridFlipTransform(
+  before: Pick<DOMRect, "height" | "left" | "top" | "width">,
+  after: Pick<DOMRect, "height" | "left" | "top" | "width">
+) {
+  return {
+    scaleX: after.width === 0 ? 1 : before.width / after.width,
+    scaleY: after.height === 0 ? 1 : before.height / after.height,
+    x: before.left - after.left,
+    y: before.top - after.top,
   }
 }
 
@@ -135,26 +156,38 @@ export function useGridInteraction(
 
   const onPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
-      if (event.button !== 0) return
+      if (event.button !== 0 || session.current) return
       event.currentTarget.focus()
       event.preventDefault()
+      event.currentTarget.setPointerCapture?.(event.pointerId)
       const start = { x: event.clientX, y: event.clientY }
       const measurement = context.measurement()
       const base = context.layout.map((item) => ({ ...item }))
       session.current = { base, draft: base, changed: false }
 
       const onMove = (moveEvent: PointerEvent) => {
-        const delta = pixelsToGridDelta(
-          { x: moveEvent.clientX - start.x, y: moveEvent.clientY - start.y },
-          measurement
-        )
+        const pixelDelta = {
+          x: moveEvent.clientX - start.x,
+          y: moveEvent.clientY - start.y,
+        }
+        const delta = pixelsToGridDelta(pixelDelta, measurement)
         const next = calculate(base, delta.columns, delta.rows)
         const current = session.current
-        if (!current || sameLayout(current.draft, next)) return
-        current.draft = next
-        current.changed = !sameLayout(base, next)
+        if (!current) return
+        if (!sameLayout(current.draft, next)) {
+          current.draft = next
+          current.changed = !sameLayout(base, next)
+        }
         if (frame.current !== null) cancelAnimationFrame(frame.current)
-        frame.current = requestAnimationFrame(() => context.preview(next))
+        frame.current = requestAnimationFrame(() =>
+          context.preview(next, {
+            gridDelta: delta,
+            itemId: id,
+            measurement,
+            pixelDelta,
+            reason,
+          })
+        )
       }
 
       const cleanup = () => {
@@ -167,13 +200,18 @@ export function useGridInteraction(
         cleanup()
         const current = session.current
         session.current = null
-        if (current?.changed) context.commit(current.draft, id, reason)
-        else context.resetPreview()
+        if (!current) return
+        context.settlePreview(
+          current.changed ? current.draft : current.base,
+          id
+        )
+        if (current.changed) context.commit(current.draft, id, reason)
       }
       const cancel = () => {
         cleanup()
+        const current = session.current
         session.current = null
-        context.resetPreview()
+        if (current) context.settlePreview(current.base, id)
       }
 
       window.addEventListener("pointermove", onMove)

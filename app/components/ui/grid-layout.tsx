@@ -29,10 +29,12 @@ import {
   type GridPlacement,
 } from "./grid-layout/geometry"
 import {
+  getGridFlipTransform,
   parseGridPixelLength,
   useGridInteraction,
   type GridInteractionContext,
   type GridInteractionReason,
+  type GridPointerPreview,
 } from "./grid-layout/interactions"
 import {
   commitProfileLayout,
@@ -189,6 +191,42 @@ function placementStyle(
   } as CSSProperties
 }
 
+const GRID_LAYOUT_MOTION = {
+  duration: 180,
+  reflowEasing: "cubic-bezier(0.77, 0, 0.175, 1)",
+  settleEasing: "cubic-bezier(0.23, 1, 0.32, 1)",
+} as const
+
+function samePlacement(left?: GridGeometryItem, right?: GridGeometryItem) {
+  return (
+    left?.column === right?.column &&
+    left?.row === right?.row &&
+    left?.width === right?.width &&
+    left?.height === right?.height
+  )
+}
+
+function flipTransform(before: DOMRect, after: DOMRect) {
+  const { scaleX, scaleY, x, y } = getGridFlipTransform(before, after)
+  return `translate3d(${x}px, ${y}px, 0) scale(${scaleX}, ${scaleY})`
+}
+
+function hasVisibleFlip(before: DOMRect, after: DOMRect) {
+  const flip = getGridFlipTransform(before, after)
+  return (
+    Math.abs(flip.x) > 0.5 ||
+    Math.abs(flip.y) > 0.5 ||
+    Math.abs(flip.scaleX - 1) > 0.005 ||
+    Math.abs(flip.scaleY - 1) > 0.005
+  )
+}
+
+function reducedMotionRequested() {
+  return (
+    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false
+  )
+}
+
 function GridLayoutRoot({
   children,
   className,
@@ -238,6 +276,8 @@ function GridLayoutRoot({
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [nodes] = useState(() => new Map<string, HTMLDivElement>())
   const [announcement, setAnnouncement] = useState("")
+  const visualLayout = useRef(resolved)
+  const motionAnimations = useRef(new Map<string, Animation>())
 
   const setContainerRef = useCallback(
     (node: HTMLDivElement | null) => {
@@ -260,7 +300,63 @@ function GridLayoutRoot({
     return () => observer.disconnect()
   }, [orderedProfiles])
 
-  const applyPreview = useCallback(
+  useEffect(() => {
+    visualLayout.current = resolved
+  }, [resolved])
+
+  useEffect(
+    () => () => {
+      for (const animation of motionAnimations.current.values()) {
+        animation.cancel()
+      }
+      motionAnimations.current.clear()
+    },
+    []
+  )
+
+  const cancelMotion = useCallback((id: string) => {
+    motionAnimations.current.get(id)?.cancel()
+    motionAnimations.current.delete(id)
+  }, [])
+
+  const animateFlip = useCallback(
+    (
+      id: string,
+      node: HTMLDivElement,
+      before: DOMRect,
+      after: DOMRect,
+      easing: string
+    ) => {
+      if (!hasVisibleFlip(before, after)) return
+      const animation = node.animate(
+        [
+          {
+            composite: "add",
+            transform: flipTransform(before, after),
+            transformOrigin: "top left",
+          },
+          {
+            composite: "add",
+            transform: "none",
+            transformOrigin: "top left",
+          },
+        ],
+        {
+          duration: GRID_LAYOUT_MOTION.duration,
+          easing,
+        }
+      )
+      motionAnimations.current.set(id, animation)
+      animation.onfinish = () => {
+        if (motionAnimations.current.get(id) !== animation) return
+        animation.cancel()
+        motionAnimations.current.delete(id)
+      }
+    },
+    []
+  )
+
+  const applyLayoutStyles = useCallback(
     (nextLayout: GridGeometryItem[]) => {
       for (const item of nextLayout) {
         const node = nodes.get(item.id)
@@ -275,6 +371,127 @@ function GridLayoutRoot({
       }
     },
     [nodes, profile]
+  )
+
+  const applyPreview = useCallback(
+    (nextLayout: GridGeometryItem[], pointer?: GridPointerPreview) => {
+      if (!pointer || reducedMotionRequested()) {
+        for (const id of motionAnimations.current.keys()) cancelMotion(id)
+        applyLayoutStyles(nextLayout)
+        visualLayout.current = nextLayout
+        return
+      }
+
+      const previous = new Map(
+        visualLayout.current.map((item) => [item.id, item])
+      )
+      const reflowing = nextLayout.filter(
+        (item) =>
+          item.id !== pointer.itemId &&
+          !samePlacement(previous.get(item.id), item)
+      )
+      const before = new Map<string, DOMRect>()
+      for (const item of reflowing) {
+        const node = nodes.get(item.id)
+        if (node) before.set(item.id, node.getBoundingClientRect())
+      }
+      for (const item of reflowing) cancelMotion(item.id)
+      cancelMotion(pointer.itemId)
+
+      applyLayoutStyles(nextLayout)
+
+      for (const item of reflowing) {
+        const node = nodes.get(item.id)
+        const previousRect = before.get(item.id)
+        if (node && previousRect) {
+          animateFlip(
+            item.id,
+            node,
+            previousRect,
+            node.getBoundingClientRect(),
+            GRID_LAYOUT_MOTION.reflowEasing
+          )
+        }
+      }
+
+      const activeNode = nodes.get(pointer.itemId)
+      if (activeNode) {
+        const stepX = pointer.measurement.columnWidth + pointer.measurement.gap
+        const stepY = pointer.measurement.rowHeight + pointer.measurement.gap
+        let residualX = pointer.pixelDelta.x - pointer.gridDelta.columns * stepX
+        let residualY = pointer.pixelDelta.y - pointer.gridDelta.rows * stepY
+        let transform = `translate3d(${residualX}px, ${residualY}px, 0)`
+
+        if (pointer.reason === "resize") {
+          const resize = configuration.get(pointer.itemId)?.resize ?? "both"
+          if (resize === "vertical") residualX = 0
+          if (resize === "horizontal") residualY = 0
+          const rect = activeNode.getBoundingClientRect()
+          const scaleX = Math.max(0.01, (rect.width + residualX) / rect.width)
+          const scaleY = Math.max(0.01, (rect.height + residualY) / rect.height)
+          transform = `scale(${scaleX}, ${scaleY})`
+        }
+
+        const animation = activeNode.animate(
+          [
+            {
+              composite: "add",
+              transform,
+              transformOrigin: "top left",
+            },
+            {
+              composite: "add",
+              transform,
+              transformOrigin: "top left",
+            },
+          ],
+          { duration: 1, fill: "forwards" }
+        )
+        motionAnimations.current.set(pointer.itemId, animation)
+      }
+      visualLayout.current = nextLayout
+    },
+    [animateFlip, applyLayoutStyles, cancelMotion, configuration, nodes]
+  )
+
+  const settlePreview = useCallback(
+    (nextLayout: GridGeometryItem[], itemId: string) => {
+      const previous = new Map(
+        visualLayout.current.map((item) => [item.id, item])
+      )
+      const candidates = new Set(
+        nextLayout
+          .filter((item) => !samePlacement(previous.get(item.id), item))
+          .map((item) => item.id)
+      )
+      candidates.add(itemId)
+      for (const id of motionAnimations.current.keys()) candidates.add(id)
+
+      const before = new Map<string, DOMRect>()
+      for (const id of candidates) {
+        const node = nodes.get(id)
+        if (node) before.set(id, node.getBoundingClientRect())
+      }
+      for (const id of candidates) cancelMotion(id)
+      applyLayoutStyles(nextLayout)
+      visualLayout.current = nextLayout
+
+      if (reducedMotionRequested()) return
+      for (const id of candidates) {
+        const node = nodes.get(id)
+        const previousRect = before.get(id)
+        if (node && previousRect) {
+          animateFlip(
+            id,
+            node,
+            previousRect,
+            node.getBoundingClientRect(),
+            GRID_LAYOUT_MOTION.settleEasing
+          )
+        }
+      }
+    },
+    [animateFlip, applyLayoutStyles, cancelMotion, nodes]
   )
 
   const commit = useCallback(
@@ -326,6 +543,7 @@ function GridLayoutRoot({
       preview: applyPreview,
       profile,
       resetPreview: () => applyPreview(resolved),
+      settlePreview,
       setAnnouncement,
     }),
     [
@@ -339,6 +557,7 @@ function GridLayoutRoot({
       profile,
       resolved,
       rowHeight,
+      settlePreview,
     ]
   )
   const bottom = Math.max(0, ...resolved.map((item) => item.row + item.height))
@@ -389,7 +608,7 @@ function GridLayoutDragHandle({
       "aria-label": `Move ${label}`,
       "data-slot": "grid-layout-drag-handle",
       className: cn(
-        "cursor-grab touch-none select-none active:cursor-grabbing",
+        "cursor-grab touch-none transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] select-none active:scale-[0.96] active:cursor-grabbing motion-reduce:transition-none motion-reduce:active:scale-100",
         className
       ),
       ...interaction,
@@ -406,7 +625,7 @@ function GridLayoutResizeHandle({ id, label }: { id: string; label: string }) {
       type="button"
       aria-label={`Resize ${label}`}
       data-slot="grid-layout-resize-handle"
-      className="absolute right-1 bottom-1 z-10 flex size-7 cursor-se-resize touch-none items-center justify-center rounded-md border bg-background/90 text-xs shadow-sm select-none"
+      className="absolute right-1 bottom-1 z-10 flex size-7 cursor-se-resize touch-none items-center justify-center rounded-md border bg-background/90 text-xs shadow-sm transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] select-none active:scale-[0.92] motion-reduce:transition-none motion-reduce:active:scale-100"
       {...interaction}
     >
       ↘

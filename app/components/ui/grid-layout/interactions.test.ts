@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest"
 
-import { parseGridPixelLength, pixelsToGridDelta } from "./interactions"
+import {
+  getGridFlipTransform,
+  parseGridPixelLength,
+  pixelsToGridDelta,
+} from "./interactions"
 
 describe("Grid Layout pointer math", () => {
   it("converts pointer travel using one measured cell geometry", () => {
@@ -18,5 +22,19 @@ describe("Grid Layout pointer math", () => {
     expect(() => parseGridPixelLength("0.75rem", "--grid-layout-gap")).toThrow(
       "--grid-layout-gap must be expressed in pixels"
     )
+  })
+
+  it("describes a compositor-only FLIP transition between grid placements", () => {
+    expect(
+      getGridFlipTransform(
+        { left: 16, top: 24, width: 100, height: 96 },
+        { left: 128, top: 84, width: 212, height: 156 }
+      )
+    ).toEqual({
+      x: -112,
+      y: -60,
+      scaleX: 100 / 212,
+      scaleY: 96 / 156,
+    })
   })
 })
