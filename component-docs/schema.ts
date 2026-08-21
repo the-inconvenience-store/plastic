@@ -21,6 +21,14 @@ export type ComponentDoc<Component extends ElementType> = {
     path: string
     exportName: string
     propsType: string
+    additionalTypes?: Array<{
+      title: string
+      name: string
+    }>
+  }
+  preview?: {
+    path: string
+    exportName: string
   }
   docs: {
     slug: `components/${string}`

@@ -4,18 +4,38 @@
   "homepage": "https://github.com/the-inconvenience-store/plastic",
   "items": [
     {
-      "name": "button",
+      "name": "grid-layout",
       "type": "registry:ui",
-      "title": "Button",
-      "description": "Displays a button or a link styled as a button.",
+      "title": "Grid Layout",
+      "description": "A responsive, accessible dashboard layout with controlled persistence and composable drag handles.",
       "dependencies": [
         "@base-ui/react",
-        "class-variance-authority"
+        "react-grid-layout"
       ],
       "files": [
         {
-          "path": "app/components/ui/button.tsx",
+          "path": "app/components/ui/grid-layout.tsx",
           "type": "registry:ui"
+        },
+        {
+          "path": "app/components/ui/grid-layout/accessibility.ts",
+          "type": "registry:lib"
+        },
+        {
+          "path": "app/components/ui/grid-layout/geometry.ts",
+          "type": "registry:lib"
+        },
+        {
+          "path": "app/components/ui/grid-layout/interactions.ts",
+          "type": "registry:lib"
+        },
+        {
+          "path": "app/components/ui/grid-layout/model.ts",
+          "type": "registry:lib"
+        },
+        {
+          "path": "app/components/ui/grid-layout/responsive.ts",
+          "type": "registry:lib"
         }
       ]
     }

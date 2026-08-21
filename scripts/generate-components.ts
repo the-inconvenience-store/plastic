@@ -15,7 +15,6 @@ const componentDirectory = resolve(
   componentDocsConfig.docs.componentDirectory
 )
 const generatedStoryDirectory = resolve(root, "app/.generated/fumadocs")
-const legacyGeneratedStoryDirectory = resolve(componentDirectory, "_generated")
 const registryPath = resolve(root, "registry.json")
 
 function quote(value: unknown) {
@@ -144,6 +143,7 @@ ${stories}
 }
 
 function renderFumadocsStory(doc: LoadedDoc) {
+  const preview = doc.preview ?? doc.source
   const variants = doc.variants
     .filter((variant) => variant.docs !== false)
     .map((variant) => ({
@@ -156,10 +156,10 @@ function renderFumadocsStory(doc: LoadedDoc) {
     throw new Error(`${doc.name} must expose at least one docs variant`)
 
   return `${generatedHeader()}import { defineStory } from "@/lib/story"
-import { ${doc.source.exportName} } from ${quote(`@/${doc.source.path.replace(/^app\//, "").replace(/\.tsx$/, "")}`)}
+import { ${preview.exportName} } from ${quote(`@/${preview.path.replace(/^app\//, "").replace(/\.tsx$/, "")}`)}
 
 export const story = defineStory({
-  Component: ${doc.source.exportName},
+  Component: ${preview.exportName},
   args: ${quote(variants)},
 })
 `
@@ -172,7 +172,16 @@ function renderMdx(doc: LoadedDoc) {
     resolve(root, doc.source.path)
   ).replaceAll("\\", "/")
   const typePath = sourcePath.startsWith(".") ? sourcePath : `./${sourcePath}`
-  const installUrl = `${componentDocsConfig.registry.publicBaseUrl}/${doc.name}.json`
+  const installAddress = `${componentDocsConfig.registry.githubAddress}/${doc.name}`
+  const apiTables = [
+    { title: doc.source.exportName, name: doc.source.propsType },
+    ...(doc.source.additionalTypes ?? []),
+  ]
+    .map(
+      ({ title, name }) =>
+        `### ${title}\n\n<auto-type-table path=${quote(typePath)} name=${quote(name)} />`
+    )
+    .join("\n\n")
   const sections = (doc.docs.sections ?? [])
     .map((section) => `## ${section.title}\n\n${section.markdown}`)
     .join("\n\n")
@@ -189,7 +198,7 @@ import { story } from "@/.generated/fumadocs/${doc.name}.story.tsx";
 ## Installation
 
 \`\`\`sh
-bunx --bun shadcn@latest add ${installUrl}
+bunx --bun shadcn@latest add ${installAddress}
 \`\`\`
 
 ## Usage
@@ -200,7 +209,7 @@ ${doc.docs.usage}
 
 ## API
 
-<auto-type-table path=${quote(typePath)} name=${quote(doc.source.propsType)} />
+${apiTables}
 
 ${sections}
 `
@@ -209,9 +218,10 @@ ${sections}
 async function writeGeneratedFiles(docs: LoadedDoc[]) {
   await rm(storybookDirectory, { recursive: true, force: true })
   await rm(generatedStoryDirectory, { recursive: true, force: true })
-  await rm(legacyGeneratedStoryDirectory, { recursive: true, force: true })
+  await rm(componentDirectory, { recursive: true, force: true })
   await mkdir(storybookDirectory, { recursive: true })
   await mkdir(generatedStoryDirectory, { recursive: true })
+  await mkdir(componentDirectory, { recursive: true })
 
   const manifestGlob = new Bun.Glob("app/components/**/*.component.tsx")
   const manifests = new Map<string, string>()
