@@ -19,6 +19,7 @@ export type GridLayoutValue = {
 export type GridLayoutItemDefinition = GridItemConstraints & {
   id: string
   initial?: Partial<GridPlacement>
+  locked?: boolean
 }
 
 export type GridLayoutProfile = {
@@ -170,7 +171,7 @@ export function reconcileGridLayout(
   }
 
   const packed = compactLayout(
-    definitions.map(({ id }) => ({ id, ...items[id] })),
+    definitions.map(({ id, locked }) => ({ id, ...items[id], locked })),
     CANONICAL_COLUMNS
   )
   for (const placement of packed) {
@@ -207,6 +208,7 @@ export function resolveProfileLayout(
     return {
       id,
       ...constrained,
+      ...(definition.locked ? { locked: true } : {}),
     }
   })
 

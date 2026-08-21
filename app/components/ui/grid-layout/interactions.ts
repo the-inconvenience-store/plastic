@@ -6,6 +6,15 @@ export type GridMeasurement = {
   gap: number
 }
 
+export function parseGridPixelLength(value: string, property: string) {
+  const normalized = value.trim()
+  if (normalized === "0") return 0
+  if (!/^-?(?:\d+|\d*\.\d+)px$/.test(normalized)) {
+    throw new Error(`${property} must be expressed in pixels`)
+  }
+  return Number.parseFloat(normalized)
+}
+
 export function pixelsToGridDelta(
   delta: GridPixelDelta,
   measurement: GridMeasurement

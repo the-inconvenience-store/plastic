@@ -165,8 +165,6 @@ export function resolveResize(
   collision: GridCollision,
   constraints: GridItemConstraints = {}
 ): GridGeometryItem[] {
-  validateGridItemConstraints(constraints)
-
   const layout = toLayout(items)
   const item = getLayoutItem(layout, itemId)
   if (!item) throw new Error(`Unknown Grid Layout item: ${itemId}`)

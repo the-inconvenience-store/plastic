@@ -63,7 +63,7 @@ export function Dashboard() {
       {
         title: "CSS variables",
         markdown:
-          "Set `--grid-layout-row-height` and `--grid-layout-gap` on the root to customize its geometry. Each item exposes `--grid-layout-column`, `--grid-layout-row`, `--grid-layout-width`, and `--grid-layout-height` for styling and inspection.",
+          "Set `--grid-layout-row-height` and `--grid-layout-gap` to pixel values on the root to customize its geometry while preserving pointer math. Each item exposes `--grid-layout-column`, `--grid-layout-row`, `--grid-layout-width`, and `--grid-layout-height` for styling and inspection.",
       },
     ],
   },

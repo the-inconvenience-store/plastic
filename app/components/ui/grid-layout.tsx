@@ -37,6 +37,7 @@ import {
   type GridPlacement,
 } from "./grid-layout/geometry"
 import {
+  parseGridPixelLength,
   pixelsToGridDelta,
   type GridMeasurement,
 } from "./grid-layout/interactions"
@@ -54,6 +55,11 @@ import {
 } from "./grid-layout/responsive"
 
 type GridInteractionReason = "move" | "resize"
+
+const GRID_INTERACTION_COPY = {
+  move: { active: "Moving", committed: "Moved" },
+  resize: { active: "Resizing", committed: "Resized" },
+} as const
 
 export type GridLayoutChangeDetail = {
   itemId: string
@@ -244,9 +250,10 @@ function GridLayoutRoot({
     [children]
   )
   const definitions = configurations.map(
-    ({ id, initial, minWidth, maxWidth, minHeight, maxHeight }) => ({
+    ({ id, initial, locked, minWidth, maxWidth, minHeight, maxHeight }) => ({
       id,
       initial,
+      locked,
       minWidth,
       maxWidth,
       minHeight,
@@ -267,12 +274,7 @@ function GridLayoutRoot({
     [profiles]
   )
   const [profile, setProfile] = useState<GridLayoutProfile>(orderedProfiles[0])
-  const resolved = resolveProfileLayout(value, definitions, profile).map(
-    (item) => ({
-      ...item,
-      ...(configuration.get(item.id)?.locked ? { locked: true } : {}),
-    })
-  )
+  const resolved = resolveProfileLayout(value, definitions, profile)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [nodes] = useState(() => new Map<string, HTMLDivElement>())
   const [announcement, setAnnouncement] = useState("")
@@ -343,19 +345,20 @@ function GridLayoutRoot({
         const container = containerRef.current
         const width = container?.clientWidth ?? 0
         const computed = container ? getComputedStyle(container) : null
-        const measuredGap = Number.parseFloat(
-          computed?.getPropertyValue("--grid-layout-gap") ?? ""
+        const gapValue = computed?.getPropertyValue("--grid-layout-gap")
+        const rowHeightValue = computed?.getPropertyValue(
+          "--grid-layout-row-height"
         )
-        const measuredRowHeight = Number.parseFloat(
-          computed?.getPropertyValue("--grid-layout-row-height") ?? ""
-        )
-        const activeGap = Number.isFinite(measuredGap) ? measuredGap : gap
+        const activeGap = gapValue
+          ? parseGridPixelLength(gapValue, "--grid-layout-gap")
+          : gap
+        const activeRowHeight = rowHeightValue
+          ? parseGridPixelLength(rowHeightValue, "--grid-layout-row-height")
+          : rowHeight
         return {
           columnWidth:
             (width - activeGap * (profile.columns - 1)) / profile.columns,
-          rowHeight: Number.isFinite(measuredRowHeight)
-            ? measuredRowHeight
-            : rowHeight,
+          rowHeight: activeRowHeight,
           gap: activeGap,
         }
       },
@@ -410,6 +413,7 @@ function GridLayoutRoot({
 
 function useGridInteraction(id: string, reason: GridInteractionReason) {
   const context = requireGridContext()
+  const copy = GRID_INTERACTION_COPY[reason]
   const session = useRef<InteractionSession | null>(null)
   const frame = useRef<number | null>(null)
 
@@ -519,12 +523,7 @@ function useGridInteraction(id: string, reason: GridInteractionReason) {
         session.current = { base, draft: base, changed: false }
         const active = base.find((item) => item.id === id)
         if (active)
-          context.setAnnouncement(
-            describeGridPlacement(
-              reason === "move" ? "Moving" : "Resizing",
-              active
-            )
-          )
+          context.setAnnouncement(describeGridPlacement(copy.active, active))
         return
       }
       if (!session.current) return
@@ -542,9 +541,7 @@ function useGridInteraction(id: string, reason: GridInteractionReason) {
         if (current.changed) context.commit(current.draft, id, reason)
         const active = current.draft.find((item) => item.id === id)
         if (active)
-          context.setAnnouncement(
-            describeGridCommit(reason === "move" ? "Moved" : "Resized", active)
-          )
+          context.setAnnouncement(describeGridCommit(copy.committed, active))
         return
       }
       const amount = event.shiftKey ? 5 : 1
@@ -567,14 +564,9 @@ function useGridInteraction(id: string, reason: GridInteractionReason) {
       context.preview(next)
       const active = next.find((item) => item.id === id)
       if (active)
-        context.setAnnouncement(
-          describeGridPlacement(
-            reason === "move" ? "Moving" : "Resizing",
-            active
-          )
-        )
+        context.setAnnouncement(describeGridPlacement(copy.active, active))
     },
-    [calculate, context, id, reason]
+    [calculate, context, copy.active, copy.committed, id, reason]
   )
 
   return { onKeyDown, onPointerDown }

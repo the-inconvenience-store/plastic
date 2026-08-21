@@ -144,6 +144,29 @@ describe("Grid Layout persistence", () => {
     ])
   })
 
+  it("preserves locked item positions while packing responsive layouts", () => {
+    expect(
+      resolveProfileLayout(
+        {
+          version: 1,
+          items: {
+            locked: { column: 0, row: 5, width: 4, height: 3 },
+            revenue: { column: 0, row: 0, width: 4, height: 3 },
+          },
+        },
+        [{ id: "locked", locked: true }, { id: "revenue" }],
+        { id: "wide", minWidth: 1024, columns: 12 }
+      )
+    ).toContainEqual({
+      id: "locked",
+      column: 0,
+      row: 5,
+      width: 4,
+      height: 3,
+      locked: true,
+    })
+  })
+
   it("commits canonical geometry at wide widths and sparse overrides elsewhere", () => {
     const definitions = [{ id: "revenue" }]
     const original = reconcileGridLayout(undefined, definitions)
