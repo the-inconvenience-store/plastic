@@ -1,3 +1,20 @@
+import {
+  useCallback,
+  useRef,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react"
+
+import { describeGridCommit, describeGridPlacement } from "./accessibility"
+import {
+  resolveMove,
+  resolveResize,
+  type GridCollision,
+  type GridGeometryItem,
+  type GridItemConstraints,
+} from "./geometry"
+import type { GridLayoutProfile } from "./model"
+
 export type GridPixelDelta = { x: number; y: number }
 
 export type GridMeasurement = {
@@ -5,6 +22,41 @@ export type GridMeasurement = {
   rowHeight: number
   gap: number
 }
+
+export type GridInteractionReason = "move" | "resize"
+
+export type GridResizeMode = "both" | "horizontal" | "vertical" | false
+
+export type GridInteractionConfiguration = GridItemConstraints & {
+  resize: GridResizeMode
+}
+
+export type GridInteractionContext = {
+  collision: GridCollision
+  commit: (
+    layout: GridGeometryItem[],
+    itemId: string,
+    reason: GridInteractionReason
+  ) => void
+  configuration: ReadonlyMap<string, GridInteractionConfiguration>
+  layout: GridGeometryItem[]
+  measurement: () => GridMeasurement
+  preview: (layout: GridGeometryItem[]) => void
+  profile: GridLayoutProfile
+  resetPreview: () => void
+  setAnnouncement: (message: string) => void
+}
+
+type InteractionSession = {
+  base: GridGeometryItem[]
+  draft: GridGeometryItem[]
+  changed: boolean
+}
+
+const INTERACTION_COPY = {
+  move: { active: "Moving", committed: "Moved" },
+  resize: { active: "Resizing", committed: "Resized" },
+} as const
 
 export function parseGridPixelLength(value: string, property: string) {
   const normalized = value.trim()
@@ -23,4 +75,170 @@ export function pixelsToGridDelta(
     columns: Math.round(delta.x / (measurement.columnWidth + measurement.gap)),
     rows: Math.round(delta.y / (measurement.rowHeight + measurement.gap)),
   }
+}
+
+function sameLayout(
+  left: readonly GridGeometryItem[],
+  right: readonly GridGeometryItem[]
+) {
+  return JSON.stringify(left) === JSON.stringify(right)
+}
+
+export function useGridInteraction(
+  context: GridInteractionContext,
+  id: string,
+  reason: GridInteractionReason
+) {
+  const session = useRef<InteractionSession | null>(null)
+  const frame = useRef<number | null>(null)
+  const copy = INTERACTION_COPY[reason]
+
+  const calculate = useCallback(
+    (base: GridGeometryItem[], columns: number, rows: number) => {
+      const active = base.find((item) => item.id === id)
+      if (!active) throw new Error(`Unknown Grid Layout item: ${id}`)
+      if (reason === "move") {
+        return resolveMove(
+          base,
+          id,
+          {
+            column: Math.max(
+              0,
+              Math.min(
+                context.profile.columns - active.width,
+                active.column + columns
+              )
+            ),
+            row: Math.max(0, active.row + rows),
+          },
+          context.profile.columns,
+          context.collision
+        )
+      }
+
+      const configuration = context.configuration.get(id)
+      const resize = configuration?.resize ?? "both"
+      return resolveResize(
+        base,
+        id,
+        {
+          width: active.width + (resize === "vertical" ? 0 : columns),
+          height: active.height + (resize === "horizontal" ? 0 : rows),
+        },
+        context.profile.columns,
+        context.collision,
+        configuration
+      )
+    },
+    [context, id, reason]
+  )
+
+  const onPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) => {
+      if (event.button !== 0) return
+      event.currentTarget.focus()
+      event.preventDefault()
+      const start = { x: event.clientX, y: event.clientY }
+      const measurement = context.measurement()
+      const base = context.layout.map((item) => ({ ...item }))
+      session.current = { base, draft: base, changed: false }
+
+      const onMove = (moveEvent: PointerEvent) => {
+        const delta = pixelsToGridDelta(
+          { x: moveEvent.clientX - start.x, y: moveEvent.clientY - start.y },
+          measurement
+        )
+        const next = calculate(base, delta.columns, delta.rows)
+        const current = session.current
+        if (!current || sameLayout(current.draft, next)) return
+        current.draft = next
+        current.changed = !sameLayout(base, next)
+        if (frame.current !== null) cancelAnimationFrame(frame.current)
+        frame.current = requestAnimationFrame(() => context.preview(next))
+      }
+
+      const cleanup = () => {
+        window.removeEventListener("pointermove", onMove)
+        window.removeEventListener("pointerup", finish)
+        window.removeEventListener("pointercancel", cancel)
+        if (frame.current !== null) cancelAnimationFrame(frame.current)
+      }
+      const finish = () => {
+        cleanup()
+        const current = session.current
+        session.current = null
+        if (current?.changed) context.commit(current.draft, id, reason)
+        else context.resetPreview()
+      }
+      const cancel = () => {
+        cleanup()
+        session.current = null
+        context.resetPreview()
+      }
+
+      window.addEventListener("pointermove", onMove)
+      window.addEventListener("pointerup", finish)
+      window.addEventListener("pointercancel", cancel)
+    },
+    [calculate, context, id, reason]
+  )
+
+  const onKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLElement>) => {
+      if ((event.key === "Enter" || event.key === " ") && !session.current) {
+        event.preventDefault()
+        const base = context.layout.map((item) => ({ ...item }))
+        session.current = { base, draft: base, changed: false }
+        const active = base.find((item) => item.id === id)
+        if (active) {
+          context.setAnnouncement(describeGridPlacement(copy.active, active))
+        }
+        return
+      }
+      if (!session.current) return
+      if (event.key === "Escape") {
+        event.preventDefault()
+        session.current = null
+        context.resetPreview()
+        context.setAnnouncement(`Cancelled ${reason} for ${id}.`)
+        return
+      }
+      if (event.key === "Enter") {
+        event.preventDefault()
+        const current = session.current
+        session.current = null
+        if (current.changed) context.commit(current.draft, id, reason)
+        const active = current.draft.find((item) => item.id === id)
+        if (active) {
+          context.setAnnouncement(describeGridCommit(copy.committed, active))
+        }
+        return
+      }
+      const amount = event.shiftKey ? 5 : 1
+      const delta =
+        event.key === "ArrowLeft"
+          ? [-amount, 0]
+          : event.key === "ArrowRight"
+            ? [amount, 0]
+            : event.key === "ArrowUp"
+              ? [0, -amount]
+              : event.key === "ArrowDown"
+                ? [0, amount]
+                : null
+      if (!delta) return
+      event.preventDefault()
+      const current = session.current
+      const next = calculate(current.draft, delta[0], delta[1])
+      current.draft = next
+      current.changed = !sameLayout(current.base, next)
+      context.preview(next)
+      const active = next.find((item) => item.id === id)
+      if (active) {
+        context.setAnnouncement(describeGridPlacement(copy.active, active))
+      }
+    },
+    [calculate, context, copy.active, copy.committed, id, reason]
+  )
+
+  return { onKeyDown, onPointerDown }
 }
