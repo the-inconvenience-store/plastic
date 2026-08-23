@@ -66,6 +66,11 @@ export function Dashboard() {
           "Focus a move or resize control and press Enter or Space to begin. Arrow keys adjust by one cell, Shift + Arrow adjusts by five, Enter commits, and Escape cancels. The southeast corner is the default resize tab stop; provide a visible `GridLayout.ResizeAnchor` when resize discoverability is important.",
       },
       {
+        title: "Dragging",
+        markdown:
+          "Grab any non-interactive part of an item to move it. Buttons, links, inputs, tabs, editable content, and resize controls keep their native interactions; add `data-grid-layout-no-drag` to any other region that should not begin a drag. Add a `GridLayout.DragHandle` child when you want a dedicated move control instead—the custom handle replaces the item's default drag surface.",
+      },
+      {
         title: "Resizing",
         markdown:
           'Items resize directly from their edges and corners. `resize="both"` enables N, NE, E, SE, S, SW, W, and NW; `horizontal` enables E and W; `vertical` enables N and S; and `false` disables resizing. Add one or more `GridLayout.ResizeAnchor` children with a `direction` when you want visible or otherwise custom resize controls; custom anchors replace that item\'s built-in edge hit areas.',
@@ -188,6 +193,60 @@ export function Dashboard() {
               name: "Resize Filters from east edge",
             })
           ).toBeInTheDocument()
+
+          const filterDescription = canvas.getByText("Refine the dashboard")
+          const filterDescriptionRect =
+            filterDescription.getBoundingClientRect()
+          const beforeSurfaceDrag = filters.getBoundingClientRect()
+          await userEvent.pointer([
+            {
+              keys: "[MouseLeft>]",
+              target: filterDescription,
+              coords: {
+                x: filterDescriptionRect.left + 4,
+                y: filterDescriptionRect.top + 4,
+              },
+            },
+            {
+              coords: {
+                x: filterDescriptionRect.left + 22,
+                y: filterDescriptionRect.top + 18,
+              },
+            },
+          ])
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve())
+          )
+          const duringSurfaceDrag = filters.getBoundingClientRect()
+          await expect(duringSurfaceDrag.left - beforeSurfaceDrag.left).toBe(18)
+          await expect(duringSurfaceDrag.top - beforeSurfaceDrag.top).toBe(14)
+          await userEvent.pointer({ keys: "[/MouseLeft]" })
+          await Promise.all(
+            filters
+              .getAnimations()
+              .map((animation) => animation.finished.catch(() => undefined))
+          )
+
+          const filterInput = canvas.getByRole("textbox", {
+            name: "Search orders",
+          })
+          const inputRect = filterInput.getBoundingClientRect()
+          const beforeInputGesture = filters.getBoundingClientRect()
+          await userEvent.pointer([
+            {
+              keys: "[MouseLeft>]",
+              target: filterInput,
+              coords: { x: inputRect.left + 4, y: inputRect.top + 4 },
+            },
+            { coords: { x: inputRect.left + 22, y: inputRect.top + 18 } },
+          ])
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve())
+          )
+          const afterInputGesture = filters.getBoundingClientRect()
+          await expect(afterInputGesture.left).toBe(beforeInputGesture.left)
+          await expect(afterInputGesture.top).toBe(beforeInputGesture.top)
+          await userEvent.pointer({ keys: "[/MouseLeft]" })
 
           const westAnchor = item.querySelector<HTMLElement>(
             '[data-slot="grid-layout-resize-anchor"][data-direction="w"]'

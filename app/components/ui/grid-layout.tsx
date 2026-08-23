@@ -201,6 +201,42 @@ function containsResizeAnchor(children: ReactNode): boolean {
   return found
 }
 
+const DEFAULT_DRAG_EXCLUSION_SELECTOR = [
+  "a",
+  "button",
+  "input",
+  "label",
+  "select",
+  "textarea",
+  "summary",
+  '[contenteditable=""]',
+  "[contenteditable=true]",
+  "[contenteditable=plaintext-only]",
+  "[draggable=true]",
+  '[tabindex]:not([tabindex="-1"])',
+  "[role=button]",
+  "[role=checkbox]",
+  "[role=combobox]",
+  "[role=link]",
+  "[role=menuitem]",
+  "[role=option]",
+  "[role=radio]",
+  "[role=slider]",
+  "[role=spinbutton]",
+  "[role=switch]",
+  "[role=tab]",
+  "[role=textbox]",
+  "[data-grid-layout-no-drag]",
+  "[data-slot=grid-layout-resize-anchor]",
+].join(",")
+
+function isDefaultDragExcluded(target: EventTarget | null) {
+  return (
+    target instanceof Element &&
+    target.closest(DEFAULT_DRAG_EXCLUSION_SELECTOR) !== null
+  )
+}
+
 const RESIZE_DIRECTIONS: Record<
   Exclude<GridLayoutResize, false>,
   readonly GridResizeDirection[]
@@ -865,6 +901,7 @@ function GridLayoutItem({
   className,
   style,
   ref,
+  onPointerDown,
   ...props
 }: GridLayoutItemProps) {
   const context = requireGridContext()
@@ -872,6 +909,8 @@ function GridLayoutItem({
   if (!placement) throw new Error(`Unknown Grid Layout item: ${id}`)
   const hasCustomDragHandle = containsDragHandle(children)
   const hasCustomResizeAnchor = containsResizeAnchor(children)
+  const defaultDragInteraction = useGridInteraction(context, id, "move")
+  const defaultDragEnabled = context.editable && !locked && !hasCustomDragHandle
 
   return (
     <GridItemContext value={{ id, label, locked, resize }}>
@@ -895,13 +934,30 @@ function GridLayoutItem({
           data-slot="grid-layout-item"
           data-grid-layout-id={id}
           data-locked={locked ? "" : undefined}
-          className={cn("size-full", className)}
+          data-drag-surface={defaultDragEnabled ? "" : undefined}
+          className={cn(
+            "size-full",
+            defaultDragEnabled &&
+              "cursor-grab touch-none active:cursor-grabbing",
+            className
+          )}
           style={style}
+          onPointerDown={(event) => {
+            onPointerDown?.(event)
+            if (
+              event.defaultPrevented ||
+              !defaultDragEnabled ||
+              isDefaultDragExcluded(event.target)
+            ) {
+              return
+            }
+            defaultDragInteraction.onPointerDown(event)
+          }}
           {...props}
         >
           {children}
-          {context.editable && !locked && !hasCustomDragHandle ? (
-            <GridLayoutDragHandle className="absolute top-1 right-1 z-10 flex size-7 items-center justify-center rounded-md border bg-background/90 text-xs shadow-sm">
+          {defaultDragEnabled ? (
+            <GridLayoutDragHandle className="pointer-events-none absolute top-1 right-1 z-10 flex size-7 items-center justify-center rounded-md border bg-background/90 text-xs opacity-0 shadow-sm focus:pointer-events-auto focus:opacity-100">
               ⋮⋮
             </GridLayoutDragHandle>
           ) : null}
