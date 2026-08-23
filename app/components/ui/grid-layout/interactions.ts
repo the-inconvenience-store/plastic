@@ -7,11 +7,13 @@ import {
 
 import { describeGridCommit, describeGridPlacement } from "./accessibility"
 import {
+  resizePlacementFromDirection,
   resolveMove,
   resolveResize,
   type GridCollision,
   type GridGeometryItem,
   type GridItemConstraints,
+  type GridResizeDirection,
 } from "./geometry"
 import type { GridLayoutProfile } from "./model"
 
@@ -32,6 +34,7 @@ export type GridPointerPreview = {
   measurement: GridMeasurement
   pixelDelta: GridPixelDelta
   reason: GridInteractionReason
+  resizeDirection?: GridResizeDirection
 }
 
 export type GridResizeMode = "both" | "horizontal" | "vertical" | false
@@ -109,7 +112,8 @@ function sameLayout(
 export function useGridInteraction(
   context: GridInteractionContext,
   id: string,
-  reason: GridInteractionReason
+  reason: GridInteractionReason,
+  resizeDirection: GridResizeDirection = "se"
 ) {
   const session = useRef<InteractionSession | null>(null)
   const frame = useRef<number | null>(null)
@@ -140,19 +144,26 @@ export function useGridInteraction(
 
       const configuration = context.configuration.get(id)
       const resize = configuration?.resize ?? "both"
+      const placement = resizePlacementFromDirection(
+        active,
+        resizeDirection,
+        {
+          columns: resize === "vertical" ? 0 : columns,
+          rows: resize === "horizontal" ? 0 : rows,
+        },
+        context.profile.columns,
+        configuration
+      )
       return resolveResize(
         base,
         id,
-        {
-          width: active.width + (resize === "vertical" ? 0 : columns),
-          height: active.height + (resize === "horizontal" ? 0 : rows),
-        },
+        placement,
         context.profile.columns,
         context.collision,
         configuration
       )
     },
-    [context, id, reason]
+    [context, id, reason, resizeDirection]
   )
 
   const onPointerDown = useCallback(
@@ -190,6 +201,7 @@ export function useGridInteraction(
             measurement,
             pixelDelta,
             reason,
+            resizeDirection: reason === "resize" ? resizeDirection : undefined,
           })
         )
       }
@@ -222,7 +234,7 @@ export function useGridInteraction(
       window.addEventListener("pointerup", finish)
       window.addEventListener("pointercancel", cancel)
     },
-    [calculate, context, id, reason]
+    [calculate, context, id, reason, resizeDirection]
   )
 
   const onKeyDown = useCallback(

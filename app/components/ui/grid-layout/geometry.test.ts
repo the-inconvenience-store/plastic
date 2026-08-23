@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest"
 import fc from "fast-check"
 
-import { projectPlacement, resolveMove, resolveResize } from "./geometry"
+import {
+  projectPlacement,
+  resizePlacementFromDirection,
+  resolveMove,
+  resolveResize,
+} from "./geometry"
 
 describe("Grid Layout geometry", () => {
   it("projects canonical placements into narrower container profiles", () => {
@@ -107,6 +112,52 @@ describe("Grid Layout geometry", () => {
     expect(
       resolveResize(items, "revenue", { width: 4, height: 2 }, 4, "block")
     ).toEqual(items)
+  })
+
+  it("keeps the opposite edges fixed for directional resizing", () => {
+    const placement = { column: 2, row: 3, width: 4, height: 3 }
+
+    expect(
+      resizePlacementFromDirection(
+        placement,
+        "nw",
+        { columns: -2, rows: -1 },
+        12
+      )
+    ).toEqual({ column: 0, row: 2, width: 6, height: 4 })
+    expect(
+      resizePlacementFromDirection(placement, "se", { columns: 2, rows: 1 }, 12)
+    ).toEqual({ column: 2, row: 3, width: 6, height: 4 })
+  })
+
+  it("applies a west resize origin to the resolved layout", () => {
+    expect(
+      resolveResize(
+        [{ id: "revenue", column: 2, row: 0, width: 2, height: 2 }],
+        "revenue",
+        { column: 1, row: 0, width: 3, height: 2 },
+        6,
+        "push"
+      )
+    ).toEqual([{ id: "revenue", column: 1, row: 0, width: 3, height: 2 }])
+  })
+
+  it("does not compact away a north resize origin", () => {
+    expect(
+      resolveResize(
+        [
+          { id: "header", column: 0, row: 0, width: 2, height: 2 },
+          { id: "revenue", column: 0, row: 3, width: 2, height: 3 },
+        ],
+        "revenue",
+        { column: 0, row: 4, width: 2, height: 2 },
+        6,
+        "push"
+      )
+    ).toEqual([
+      { id: "header", column: 0, row: 0, width: 2, height: 2 },
+      { id: "revenue", column: 0, row: 4, width: 2, height: 2 },
+    ])
   })
 
   it("rejects impossible resize constraints", () => {

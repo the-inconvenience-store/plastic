@@ -27,6 +27,7 @@ import {
   type GridGeometryItem,
   type GridItemConstraints,
   type GridPlacement,
+  type GridResizeDirection,
 } from "./grid-layout/geometry"
 import {
   getGridFlipTransform,
@@ -95,6 +96,13 @@ export type GridLayoutDragHandleProps = Omit<
   "onPointerDown" | "onKeyDown"
 >
 
+export type GridLayoutResizeAnchorProps = Omit<
+  useRender.ComponentProps<"button">,
+  "onPointerDown" | "onKeyDown"
+> & {
+  direction?: GridResizeDirection
+}
+
 type ItemConfiguration = GridLayoutItemDefinition &
   GridItemConstraints & {
     label?: string
@@ -111,6 +119,8 @@ type GridLayoutContextValue = GridInteractionContext & {
 type GridLayoutItemContextValue = {
   id: string
   label: string
+  locked: boolean
+  resize: GridLayoutResize
 }
 
 const GridContext = createContext<GridLayoutContextValue | null>(null)
@@ -127,7 +137,7 @@ function requireItemContext() {
   const context = use(GridItemContext)
   if (!context)
     throw new Error(
-      "GridLayout.DragHandle must be rendered inside GridLayout.Item"
+      "GridLayout handles must be rendered inside GridLayout.Item"
     )
   return context
 }
@@ -173,6 +183,77 @@ function containsDragHandle(children: ReactNode): boolean {
     }
   })
   return found
+}
+
+function containsResizeAnchor(children: ReactNode): boolean {
+  let found = false
+  Children.forEach(children, (child) => {
+    if (!isValidElement(child) || found) return
+    if (child.type === GridLayoutResizeAnchor) found = true
+    else if (
+      child.props &&
+      typeof child.props === "object" &&
+      "children" in child.props
+    ) {
+      found = containsResizeAnchor(child.props.children as ReactNode)
+    }
+  })
+  return found
+}
+
+const RESIZE_DIRECTIONS: Record<
+  Exclude<GridLayoutResize, false>,
+  readonly GridResizeDirection[]
+> = {
+  both: ["n", "ne", "e", "se", "s", "sw", "w", "nw"],
+  horizontal: ["e", "w"],
+  vertical: ["n", "s"],
+}
+
+const RESIZE_DIRECTION_META: Record<
+  GridResizeDirection,
+  { cursor: string; hitArea: string; label: string }
+> = {
+  n: {
+    cursor: "cursor-n-resize",
+    hitArea: "-top-1.5 right-6 left-6 h-3",
+    label: "north edge",
+  },
+  ne: {
+    cursor: "cursor-ne-resize",
+    hitArea: "-top-1.5 -right-1.5 size-6",
+    label: "northeast corner",
+  },
+  e: {
+    cursor: "cursor-e-resize",
+    hitArea: "top-6 -right-1.5 bottom-6 w-3",
+    label: "east edge",
+  },
+  se: {
+    cursor: "cursor-se-resize",
+    hitArea: "-right-1.5 -bottom-1.5 size-6",
+    label: "southeast corner",
+  },
+  s: {
+    cursor: "cursor-s-resize",
+    hitArea: "right-6 -bottom-1.5 left-6 h-3",
+    label: "south edge",
+  },
+  sw: {
+    cursor: "cursor-sw-resize",
+    hitArea: "-bottom-1.5 -left-1.5 size-6",
+    label: "southwest corner",
+  },
+  w: {
+    cursor: "cursor-w-resize",
+    hitArea: "top-6 bottom-6 -left-1.5 w-3",
+    label: "west edge",
+  },
+  nw: {
+    cursor: "cursor-nw-resize",
+    hitArea: "-top-1.5 -left-1.5 size-6",
+    label: "northwest corner",
+  },
 }
 
 function placementStyle(
@@ -458,21 +539,17 @@ function GridLayoutRoot({
         const stepY = pointer.measurement.rowHeight + pointer.measurement.gap
         const actualColumns = activePlacement.column - pointer.baseItem.column
         const actualRows = activePlacement.row - pointer.baseItem.row
-        const maximumX =
-          (profile.columns - pointer.baseItem.width - pointer.baseItem.column) *
-          stepX
-        const clampedX = clamp(
-          pointer.pixelDelta.x,
-          -pointer.baseItem.column * stepX,
-          maximumX
-        )
-        let residualX = clampedX - actualColumns * stepX
-        let residualY =
-          Math.max(pointer.pixelDelta.y, -pointer.baseItem.row * stepY) -
-          actualRows * stepY
 
         if (pointer.reason === "resize") {
+          const direction = pointer.resizeDirection ?? "se"
           const resize = configuration.get(pointer.itemId)?.resize ?? "both"
+          const horizontal = resize !== "vertical"
+          const vertical = resize !== "horizontal"
+          const west = horizontal && direction.includes("w")
+          const east = horizontal && direction.includes("e")
+          const north = vertical && direction.includes("n")
+          const south = vertical && direction.includes("s")
+          const itemConfiguration = configuration.get(pointer.itemId)
           const baseWidth = gridSpanPixels(
             pointer.baseItem.width,
             pointer.measurement.columnWidth,
@@ -484,43 +561,82 @@ function GridLayoutRoot({
             pointer.measurement.gap
           )
           const minimumWidth = gridSpanPixels(
-            configuration.get(pointer.itemId)?.minWidth ?? 1,
+            itemConfiguration?.minWidth ?? 1,
             pointer.measurement.columnWidth,
             pointer.measurement.gap
           )
           const maximumWidth = gridSpanPixels(
-            configuration.get(pointer.itemId)?.maxWidth ??
-              profile.columns - pointer.baseItem.column,
+            Math.min(
+              itemConfiguration?.maxWidth ?? profile.columns,
+              west
+                ? pointer.baseItem.column + pointer.baseItem.width
+                : profile.columns - pointer.baseItem.column
+            ),
             pointer.measurement.columnWidth,
             pointer.measurement.gap
           )
           const minimumHeight = gridSpanPixels(
-            configuration.get(pointer.itemId)?.minHeight ?? 1,
+            itemConfiguration?.minHeight ?? 1,
             pointer.measurement.rowHeight,
             pointer.measurement.gap
           )
-          const configuredMaximumHeight = configuration.get(
-            pointer.itemId
-          )?.maxHeight
-          if (resize !== "vertical") {
-            activeNode.style.width = `${clamp(baseWidth + pointer.pixelDelta.x, minimumWidth, maximumWidth)}px`
+          const maximumHeightInRows = Math.min(
+            itemConfiguration?.maxHeight ?? Number.POSITIVE_INFINITY,
+            north
+              ? pointer.baseItem.row + pointer.baseItem.height
+              : Number.POSITIVE_INFINITY
+          )
+          const maximumHeight = Number.isFinite(maximumHeightInRows)
+            ? gridSpanPixels(
+                maximumHeightInRows,
+                pointer.measurement.rowHeight,
+                pointer.measurement.gap
+              )
+            : Number.POSITIVE_INFINITY
+          const liveWidth = clamp(
+            baseWidth +
+              (east ? pointer.pixelDelta.x : west ? -pointer.pixelDelta.x : 0),
+            minimumWidth,
+            maximumWidth
+          )
+          const liveHeight = clamp(
+            baseHeight +
+              (south
+                ? pointer.pixelDelta.y
+                : north
+                  ? -pointer.pixelDelta.y
+                  : 0),
+            minimumHeight,
+            maximumHeight
+          )
+          if (east || west) {
+            activeNode.style.width = `${liveWidth}px`
           }
-          if (resize !== "horizontal") {
-            activeNode.style.height = `${Math.max(
-              minimumHeight,
-              configuredMaximumHeight === undefined
-                ? baseHeight + pointer.pixelDelta.y
-                : Math.min(
-                    baseHeight + pointer.pixelDelta.y,
-                    gridSpanPixels(
-                      configuredMaximumHeight,
-                      pointer.measurement.rowHeight,
-                      pointer.measurement.gap
-                    )
-                  )
-            )}px`
+          if (north || south) {
+            activeNode.style.height = `${liveHeight}px`
+          }
+          const residualX =
+            (west ? baseWidth - liveWidth : 0) - actualColumns * stepX
+          const residualY =
+            (north ? baseHeight - liveHeight : 0) - actualRows * stepY
+          if (residualX !== 0 || residualY !== 0) {
+            activeMotionNode.style.transform = `translate3d(${residualX}px, ${residualY}px, 0)`
           }
         } else {
+          const maximumX =
+            (profile.columns -
+              pointer.baseItem.width -
+              pointer.baseItem.column) *
+            stepX
+          const clampedX = clamp(
+            pointer.pixelDelta.x,
+            -pointer.baseItem.column * stepX,
+            maximumX
+          )
+          let residualX = clampedX - actualColumns * stepX
+          let residualY =
+            Math.max(pointer.pixelDelta.y, -pointer.baseItem.row * stepY) -
+            actualRows * stepY
           if (actualColumns !== pointer.gridDelta.columns) {
             residualX = clamp(residualX, -stepX / 2, stepX / 2)
           }
@@ -687,11 +803,11 @@ function GridLayoutDragHandle({
   ...props
 }: GridLayoutDragHandleProps) {
   const grid = requireGridContext()
-  const { id, label } = requireItemContext()
+  const { id, label, locked } = requireItemContext()
   const interaction = useGridInteraction(grid, id, "move")
 
   return useRender({
-    enabled: grid.editable,
+    enabled: grid.editable && !locked,
     defaultTagName: "button",
     render,
     props: {
@@ -708,20 +824,31 @@ function GridLayoutDragHandle({
   })
 }
 
-function GridLayoutResizeHandle({ id, label }: { id: string; label: string }) {
+function GridLayoutResizeAnchor({
+  direction = "se",
+  render,
+  className,
+  ...props
+}: GridLayoutResizeAnchorProps) {
   const grid = requireGridContext()
-  const interaction = useGridInteraction(grid, id, "resize")
-  return (
-    <button
-      type="button"
-      aria-label={`Resize ${label}`}
-      data-slot="grid-layout-resize-handle"
-      className="absolute right-1 bottom-1 z-10 flex size-7 cursor-se-resize touch-none items-center justify-center rounded-md border bg-background/90 text-xs shadow-sm transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] select-none active:scale-[0.92] motion-reduce:transition-none motion-reduce:active:scale-100"
-      {...interaction}
-    >
-      ↘
-    </button>
-  )
+  const { id, label, locked, resize } = requireItemContext()
+  const interaction = useGridInteraction(grid, id, "resize", direction)
+  const meta = RESIZE_DIRECTION_META[direction]
+
+  return useRender({
+    enabled: grid.editable && !locked && resize !== false,
+    defaultTagName: "button",
+    render,
+    props: {
+      type: "button",
+      "aria-label": `Resize ${label} from ${meta.label}`,
+      "data-slot": "grid-layout-resize-anchor",
+      "data-direction": direction,
+      className: cn("touch-none select-none", meta.cursor, className),
+      ...interaction,
+      ...props,
+    },
+  })
 }
 
 function GridLayoutItem({
@@ -744,9 +871,10 @@ function GridLayoutItem({
   const placement = context.layout.find((item) => item.id === id)
   if (!placement) throw new Error(`Unknown Grid Layout item: ${id}`)
   const hasCustomDragHandle = containsDragHandle(children)
+  const hasCustomResizeAnchor = containsResizeAnchor(children)
 
   return (
-    <GridItemContext value={{ id, label }}>
+    <GridItemContext value={{ id, label, locked, resize }}>
       <div
         ref={(node) => {
           if (node) context.nodes.set(id, node)
@@ -777,9 +905,22 @@ function GridLayoutItem({
               ⋮⋮
             </GridLayoutDragHandle>
           ) : null}
-          {context.editable && !locked && resize !== false ? (
-            <GridLayoutResizeHandle id={id} label={label} />
-          ) : null}
+          {context.editable &&
+          !locked &&
+          resize !== false &&
+          !hasCustomResizeAnchor
+            ? RESIZE_DIRECTIONS[resize].map((direction) => (
+                <GridLayoutResizeAnchor
+                  key={direction}
+                  direction={direction}
+                  tabIndex={direction === "se" ? 0 : -1}
+                  className={cn(
+                    "absolute bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                    RESIZE_DIRECTION_META[direction].hitArea
+                  )}
+                />
+              ))
+            : null}
         </div>
       </div>
     </GridItemContext>
@@ -794,6 +935,7 @@ type GridLayoutCompound = ((props: GridLayoutProps) => ReactElement) & {
   Static: typeof GridLayoutStatic
   Item: typeof GridLayoutItem
   DragHandle: typeof GridLayoutDragHandle
+  ResizeAnchor: typeof GridLayoutResizeAnchor
 }
 
 const GridLayout = Object.assign(
@@ -804,11 +946,13 @@ const GridLayout = Object.assign(
     Static: GridLayoutStatic,
     Item: GridLayoutItem,
     DragHandle: GridLayoutDragHandle,
+    ResizeAnchor: GridLayoutResizeAnchor,
   }
 ) as GridLayoutCompound
 
 export {
   GridLayout,
+  type GridResizeDirection,
   type GridLayoutItemDefinition,
   type GridLayoutProfile,
   type GridLayoutValue,

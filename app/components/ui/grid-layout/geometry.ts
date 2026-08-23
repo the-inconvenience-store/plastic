@@ -21,11 +21,61 @@ export type GridGeometryItem = GridPlacement & {
 
 export type GridCollision = "push" | "block"
 
+export type GridResizeDirection =
+  "n" | "ne" | "e" | "se" | "s" | "sw" | "w" | "nw"
+
 export type GridItemConstraints = {
   minWidth?: number
   maxWidth?: number
   minHeight?: number
   maxHeight?: number
+}
+
+function clamp(value: number, minimum: number, maximum: number) {
+  return Math.min(maximum, Math.max(minimum, value))
+}
+
+export function resizePlacementFromDirection(
+  item: GridPlacement,
+  direction: GridResizeDirection,
+  delta: { columns: number; rows: number },
+  columns: number,
+  constraints: GridItemConstraints = {}
+): GridPlacement {
+  validateGridItemConstraints(constraints)
+  const west = direction.includes("w")
+  const east = direction.includes("e")
+  const north = direction.includes("n")
+  const south = direction.includes("s")
+  const minimumWidth = Math.min(columns, constraints.minWidth ?? 1)
+  const maximumWidth = Math.min(
+    constraints.maxWidth ?? columns,
+    west ? item.column + item.width : columns - item.column
+  )
+  const minimumHeight = constraints.minHeight ?? 1
+  const maximumHeight = north
+    ? Math.min(
+        constraints.maxHeight ?? item.row + item.height,
+        item.row + item.height
+      )
+    : (constraints.maxHeight ?? Number.POSITIVE_INFINITY)
+  const width = clamp(
+    item.width + (east ? delta.columns : west ? -delta.columns : 0),
+    minimumWidth,
+    maximumWidth
+  )
+  const height = clamp(
+    item.height + (south ? delta.rows : north ? -delta.rows : 0),
+    minimumHeight,
+    maximumHeight
+  )
+
+  return {
+    column: west ? item.column + item.width - width : item.column,
+    row: north ? item.row + item.height - height : item.row,
+    width,
+    height,
+  }
 }
 
 export function validateGridItemConstraints(constraints: GridItemConstraints) {
@@ -160,7 +210,8 @@ export function resolveMove(
 export function resolveResize(
   items: readonly GridGeometryItem[],
   itemId: string,
-  size: Pick<GridPlacement, "width" | "height">,
+  placement: Pick<GridPlacement, "width" | "height"> &
+    Partial<Pick<GridPlacement, "column" | "row">>,
   columns: number,
   collision: GridCollision,
   constraints: GridItemConstraints = {}
@@ -170,15 +221,29 @@ export function resolveResize(
   if (!item) throw new Error(`Unknown Grid Layout item: ${itemId}`)
 
   const constrained = constrainPlacement(
-    { column: item.x, row: item.y, ...size },
+    {
+      column: placement.column ?? item.x,
+      row: placement.row ?? item.y,
+      width: placement.width,
+      height: placement.height,
+    },
     columns,
     constraints
   )
-  const width = Math.min(constrained.width, columns - item.x)
+  const width = Math.min(constrained.width, columns - constrained.column)
   const height = constrained.height
   const resized = layout.map((layoutItem) =>
     layoutItem.i === itemId
-      ? { ...layoutItem, w: width, h: height }
+      ? {
+          ...layoutItem,
+          x: constrained.column,
+          y: constrained.row,
+          w: width,
+          h: height,
+          // Compaction is useful for the displaced items, but the pointer owns
+          // the active item's exact origin for north and west resizing.
+          static: true,
+        }
       : layoutItem
   )
   const activeItem = getLayoutItem(resized, itemId)
@@ -191,5 +256,12 @@ export function resolveResize(
     return items.map((current) => ({ ...current }))
   }
 
-  return verticalCompactor.compact(resized, columns).map(fromLayoutItem)
+  return verticalCompactor
+    .compact(resized, columns)
+    .map(fromLayoutItem)
+    .map((current) => {
+      if (current.id !== itemId || item.static) return current
+      const { locked: _locked, ...unlocked } = current
+      return unlocked
+    })
 }

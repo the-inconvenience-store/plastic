@@ -6,7 +6,7 @@ export const componentDoc = defineComponentDoc({
   name: "grid-layout",
   title: "Grid Layout",
   description:
-    "A responsive, accessible dashboard layout with controlled persistence and composable drag handles.",
+    "A responsive, accessible dashboard layout with controlled persistence, edge resizing, and composable interaction controls.",
   component: GridLayoutDemo,
   source: {
     path: "app/components/ui/grid-layout.tsx",
@@ -18,6 +18,10 @@ export const componentDoc = defineComponentDoc({
       {
         title: "GridLayout.DragHandle",
         name: "GridLayoutDragHandleProps",
+      },
+      {
+        title: "GridLayout.ResizeAnchor",
+        name: "GridLayoutResizeAnchorProps",
       },
       { title: "Persisted value", name: "GridLayoutValue" },
       { title: "Change detail", name: "GridLayoutChangeDetail" },
@@ -38,6 +42,12 @@ export function Dashboard() {
       <GridLayout.Item id="revenue">
         <section>Revenue</section>
       </GridLayout.Item>
+      <GridLayout.Item id="filters" resize="horizontal">
+        <section>Filters</section>
+        <GridLayout.ResizeAnchor direction="e">
+          Resize filters
+        </GridLayout.ResizeAnchor>
+      </GridLayout.Item>
       <GridLayout.Item id="orders" locked>
         <section>Orders</section>
       </GridLayout.Item>
@@ -53,7 +63,12 @@ export function Dashboard() {
       {
         title: "Keyboard controls",
         markdown:
-          "Focus a move or resize handle and press Enter or Space to begin. Arrow keys adjust by one cell, Shift + Arrow adjusts by five, Enter commits, and Escape cancels.",
+          "Focus a move or resize control and press Enter or Space to begin. Arrow keys adjust by one cell, Shift + Arrow adjusts by five, Enter commits, and Escape cancels. The southeast corner is the default resize tab stop; provide a visible `GridLayout.ResizeAnchor` when resize discoverability is important.",
+      },
+      {
+        title: "Resizing",
+        markdown:
+          'Items resize directly from their edges and corners. `resize="both"` enables N, NE, E, SE, S, SW, W, and NW; `horizontal` enables E and W; `vertical` enables N and S; and `false` disables resizing. Add one or more `GridLayout.ResizeAnchor` children with a `direction` when you want visible or otherwise custom resize controls; custom anchors replace that item\'s built-in edge hit areas.',
       },
       {
         title: "Motion",
@@ -86,7 +101,7 @@ export function Dashboard() {
         play: async ({ canvas, canvasElement, userEvent }) => {
           const { expect } = await import("storybook/test")
           const handle = canvas.getByRole("button", {
-            name: "Resize Revenue",
+            name: "Resize Revenue from southeast corner",
           })
           const item = canvasElement.querySelector<HTMLElement>(
             '[data-grid-layout-id="revenue"]'
@@ -130,7 +145,7 @@ export function Dashboard() {
           await userEvent.pointer({ keys: "[/MouseLeft]" })
 
           const resizeHandle = canvas.getByRole("button", {
-            name: "Resize Revenue",
+            name: "Resize Revenue from southeast corner",
           })
           const resizeRect = resizeHandle.getBoundingClientRect()
           const itemBeforeResize = item.getBoundingClientRect()
@@ -149,6 +164,56 @@ export function Dashboard() {
           await expect(itemDuringResize.width - itemBeforeResize.width).toBe(18)
           await expect(itemDuringResize.height - itemBeforeResize.height).toBe(
             14
+          )
+          await userEvent.pointer({ keys: "[/MouseLeft]" })
+          await Promise.all(
+            item
+              .getAnimations()
+              .map((animation) => animation.finished.catch(() => undefined))
+          )
+
+          const defaultAnchors = item.querySelectorAll(
+            '[data-slot="grid-layout-resize-anchor"]'
+          )
+          await expect(defaultAnchors).toHaveLength(8)
+          const filters = canvasElement.querySelector<HTMLElement>(
+            '[data-grid-layout-id="filters"]'
+          )
+          if (!filters) throw new Error("Filters grid item was not rendered")
+          await expect(
+            filters.querySelectorAll('[data-slot="grid-layout-resize-anchor"]')
+          ).toHaveLength(1)
+          await expect(
+            canvas.getByRole("button", {
+              name: "Resize Filters from east edge",
+            })
+          ).toBeInTheDocument()
+
+          const westAnchor = item.querySelector<HTMLElement>(
+            '[data-slot="grid-layout-resize-anchor"][data-direction="w"]'
+          )
+          if (!westAnchor) throw new Error("West resize edge was not rendered")
+          const westRect = westAnchor.getBoundingClientRect()
+          const beforeWestResize = item.getBoundingClientRect()
+          await userEvent.pointer([
+            {
+              keys: "[MouseLeft>]",
+              target: westAnchor,
+              coords: { x: westRect.left + 4, y: westRect.top + 4 },
+            },
+            { coords: { x: westRect.left + 22, y: westRect.top + 4 } },
+          ])
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve())
+          )
+          const duringWestResize = item.getBoundingClientRect()
+          await expect(duringWestResize.left - beforeWestResize.left).toBe(18)
+          await expect(duringWestResize.width - beforeWestResize.width).toBe(
+            -18
+          )
+          await expect(duringWestResize.right).toBeCloseTo(
+            beforeWestResize.right,
+            1
           )
           await userEvent.pointer({ keys: "[/MouseLeft]" })
         },
@@ -171,7 +236,7 @@ export function Dashboard() {
             '[data-grid-layout-id="revenue"]'
           )
           const resizeHandle = canvas.getByRole("button", {
-            name: "Resize Revenue",
+            name: "Resize Revenue from southeast corner",
           })
           if (!item) throw new Error("Revenue grid item was not rendered")
 

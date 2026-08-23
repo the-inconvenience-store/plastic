@@ -7,7 +7,7 @@
       "name": "grid-layout",
       "type": "registry:ui",
       "title": "Grid Layout",
-      "description": "A responsive, accessible dashboard layout with controlled persistence and composable drag handles.",
+      "description": "A responsive, accessible dashboard layout with controlled persistence, edge resizing, and composable interaction controls.",
       "dependencies": [
         "@base-ui/react",
         "react-grid-layout"

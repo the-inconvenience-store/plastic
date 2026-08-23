@@ -73,6 +73,14 @@ export function GridLayoutDemo({
             <CardHeader>
               <CardTitle>Filters</CardTitle>
               <CardDescription>Refine the dashboard</CardDescription>
+              <CardAction>
+                <GridLayout.ResizeAnchor
+                  direction="e"
+                  render={<Button variant="ghost" size="icon-sm" />}
+                >
+                  <span aria-hidden="true">↔</span>
+                </GridLayout.ResizeAnchor>
+              </CardAction>
             </CardHeader>
             <CardContent>
               <Input aria-label="Search orders" placeholder="Search orders" />
