@@ -1,0 +1,43 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry.json",
+  "name": "plastic",
+  "homepage": "https://github.com/the-inconvenience-store/plastic",
+  "items": [
+    {
+      "name": "grid-layout",
+      "type": "registry:ui",
+      "title": "Grid Layout",
+      "description": "A responsive, accessible dashboard layout with controlled persistence, edge resizing, and composable interaction controls.",
+      "dependencies": [
+        "@base-ui/react",
+        "react-grid-layout"
+      ],
+      "files": [
+        {
+          "path": "app/components/ui/grid-layout.tsx",
+          "type": "registry:ui"
+        },
+        {
+          "path": "app/components/ui/grid-layout/accessibility.ts",
+          "type": "registry:lib"
+        },
+        {
+          "path": "app/components/ui/grid-layout/geometry.ts",
+          "type": "registry:lib"
+        },
+        {
+          "path": "app/components/ui/grid-layout/interactions.ts",
+          "type": "registry:lib"
+        },
+        {
+          "path": "app/components/ui/grid-layout/model.ts",
+          "type": "registry:lib"
+        },
+        {
+          "path": "app/components/ui/grid-layout/responsive.ts",
+          "type": "registry:lib"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+---
+title: Plastic
+description: An installable shadcn component registry, documented with Fumadocs.
+---
+
+Plastic is a source-first component registry. Each component has one typed manifest that drives its Storybook stories, Fumadocs examples, API reference, and shadcn registry entry.
+
+<Cards>
+  <Card
+    title="Browse components"
+    description="See live examples, variants, and component APIs."
+    href="/docs/components/button"
+  />
+  <Card
+    title="Use the registry"
+    description="Install components from the hosted shadcn registry."
+    href="/docs/registry"
+  />
+</Cards>
+
+## Install a component
+
+```sh
+bunx --bun shadcn@latest add https://the-inconvenience-store.github.io/plastic/r/button.json
+```
+
+## Work locally
+
+```sh
+bun install
+bun run storybook
+```
+
+Use `bun run dev` for this documentation site and `bun run registry:build` to regenerate the installable JSON payloads.
+
+Component authors edit the implementation, its exported props type and TSDoc, and the colocated `*.component.tsx` manifest. Run `bun run generate` when you want to inspect the derived files without starting a development server.

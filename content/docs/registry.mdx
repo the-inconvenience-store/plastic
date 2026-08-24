@@ -1,0 +1,36 @@
+---
+title: Registry
+description: Build, validate, host, and consume the Plastic shadcn registry.
+---
+
+The source of truth is each component's typed `*.component.tsx` manifest. The generator derives `registry.json`, Storybook stories, Fumadocs Story modules, and component reference pages from those manifests.
+
+## Build and validate
+
+```sh
+bun run registry:validate
+bun run registry:build
+```
+
+Generation fails on duplicate component names or slugs and on values that cannot be shared safely between Storybook and Fumadocs Story. The registry build writes static installer payloads to `public/r`; Fumadocs copies them into its production output so GitHub Pages serves them alongside the documentation.
+
+## Install from GitHub Pages
+
+```sh
+bunx --bun shadcn@latest add https://the-inconvenience-store.github.io/plastic/r/button.json
+```
+
+## Add an item
+
+1. Create the component under `app/components` and export a named props type with useful TSDoc.
+2. Add a colocated `*.component.tsx` manifest containing its examples, controls, registry metadata, usage snippet, and any component-specific guidance.
+3. Run `bun run generate` or keep `bun run storybook`/`bun run dev` open while authoring.
+4. Run validation, story tests, type checking, and both production builds before publishing.
+
+Generated component pages remain ignored by Git, while generated `registry.json` is committed to support shadcn's repository shorthand. High-level guides in `content/docs` remain handwritten.
+
+## Install from the source registry
+
+```sh
+bunx --bun shadcn@latest add the-inconvenience-store/plastic/button
+```
