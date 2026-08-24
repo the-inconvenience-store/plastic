@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest"
 import fc from "fast-check"
 
 import {
+  applyGridConstraints,
+  compactGridLayout,
+  gridConstraints,
+  getGridCollisions,
   projectPlacement,
   resizePlacementFromDirection,
   resolveMove,
@@ -9,6 +13,69 @@ import {
 } from "./geometry"
 
 describe("Grid Layout geometry", () => {
+  it("supports every compaction policy through one headless operation", () => {
+    const items = [
+      { id: "a", column: 2, row: 2, width: 2, height: 1 },
+      { id: "fixed", column: 0, row: 1, width: 2, height: 1, static: true },
+    ]
+
+    expect(compactGridLayout(items, "none", { columns: 4 })).toEqual(items)
+    expect(compactGridLayout(items, "vertical", { columns: 4 })[1]).toEqual(
+      items[1]
+    )
+    expect(compactGridLayout(items, "horizontal", { columns: 4 })[1]).toEqual(
+      items[1]
+    )
+    expect(compactGridLayout(items, "wrap", { columns: 4 })).toHaveLength(2)
+  })
+
+  it("composes custom constraints and reapplies hard bounds", () => {
+    const item = { id: "chart", column: 0, row: 0, width: 2, height: 2 }
+    const result = applyGridConstraints(
+      { column: 3, row: 7, width: 3, height: 2 },
+      [gridConstraints.snap({ columns: 2, rows: 3 })],
+      {
+        item,
+        previous: item,
+        layout: [item],
+        columns: 4,
+        maxRows: 6,
+        operation: "move",
+      }
+    )
+    expect(result).toEqual({ column: 1, row: 4, width: 3, height: 2 })
+  })
+
+  it("reports overlap without mutating geometry", () => {
+    const items = [
+      { id: "a", column: 0, row: 0, width: 2, height: 2, layer: 2 },
+      { id: "b", column: 1, row: 1, width: 2, height: 2 },
+    ]
+    expect(getGridCollisions(items, items[0]).map((item) => item.id)).toEqual([
+      "b",
+    ])
+    expect(items[0].layer).toBe(2)
+  })
+
+  it("supports visible bounds and pixel-aware aspect ratios", () => {
+    const item = { id: "video", column: 0, row: 0, width: 4, height: 1 }
+    expect(
+      applyGridConstraints(
+        { ...item, row: 8 },
+        [gridConstraints.aspectRatio(2), gridConstraints.container()],
+        {
+          item,
+          previous: item,
+          layout: [item],
+          columns: 12,
+          visibleRows: 5,
+          columnPixels: 100,
+          rowPixels: 50,
+          operation: "resize",
+        }
+      )
+    ).toEqual({ column: 0, row: 1, width: 4, height: 4 })
+  })
   it("projects canonical placements into narrower container profiles", () => {
     const canonical = {
       column: 8,
@@ -92,6 +159,50 @@ describe("Grid Layout geometry", () => {
       width: 2,
       height: 2,
     })
+  })
+
+  it("keeps static items fixed while dynamic items resolve around them", () => {
+    const items = [
+      { id: "moving", column: 0, row: 0, width: 2, height: 2 },
+      {
+        id: "fixed",
+        column: 2,
+        row: 0,
+        width: 2,
+        height: 2,
+        static: true,
+      },
+    ] as const
+
+    expect(
+      resolveMove(items, "fixed", { column: 0, row: 2 }, 4, "push")
+    ).toEqual(items)
+    expect(
+      resolveMove(items, "moving", { column: 2, row: 0 }, 4, "push")
+    ).toEqual([
+      { id: "moving", column: 2, row: 2, width: 2, height: 2 },
+      {
+        id: "fixed",
+        column: 2,
+        row: 0,
+        width: 2,
+        height: 2,
+        static: true,
+      },
+    ])
+    expect(
+      resolveResize(items, "moving", { width: 4, height: 2 }, 4, "push")
+    ).toEqual([
+      { id: "moving", column: 0, row: 2, width: 4, height: 2 },
+      {
+        id: "fixed",
+        column: 2,
+        row: 0,
+        width: 2,
+        height: 2,
+        static: true,
+      },
+    ])
   })
 
   it("resizes within item constraints and pushes collisions", () => {

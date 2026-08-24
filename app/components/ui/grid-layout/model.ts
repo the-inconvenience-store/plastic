@@ -1,10 +1,12 @@
 import {
   compactLayout,
+  compactGridLayout,
   constrainPlacement,
   projectPlacement,
   type GridGeometryItem,
   type GridItemConstraints,
   type GridPlacement,
+  type GridCompaction,
 } from "./geometry"
 
 export type GridLayoutItemValue = GridPlacement & {
@@ -19,13 +21,18 @@ export type GridLayoutValue = {
 export type GridLayoutItemDefinition = GridItemConstraints & {
   id: string
   initial?: Partial<GridPlacement>
-  locked?: boolean
+  static?: boolean
 }
 
 export type GridLayoutProfile = {
   id: string
   minWidth: number
   columns: number
+  rowHeight?: number
+  gap?: number | { x: number; y: number }
+  padding?: number | { x: number; y: number }
+  maxRows?: number
+  compaction?: GridCompaction
 }
 
 const CANONICAL_COLUMNS = 12
@@ -171,7 +178,11 @@ export function reconcileGridLayout(
   }
 
   const packed = compactLayout(
-    definitions.map(({ id, locked }) => ({ id, ...items[id], locked })),
+    definitions.map(({ id, static: staticItem }) => ({
+      id,
+      ...items[id],
+      ...(staticItem ? { static: true } : {}),
+    })),
     CANONICAL_COLUMNS
   )
   for (const placement of packed) {
@@ -190,7 +201,8 @@ export function reconcileGridLayout(
 export function resolveProfileLayout(
   value: GridLayoutValue | undefined,
   definitions: readonly GridLayoutItemDefinition[],
-  profile: GridLayoutProfile
+  profile: GridLayoutProfile,
+  compaction: GridCompaction = profile.compaction ?? "vertical"
 ): GridGeometryItem[] {
   const reconciled = reconcileGridLayout(value, definitions)
 
@@ -208,11 +220,14 @@ export function resolveProfileLayout(
     return {
       id,
       ...constrained,
-      ...(definition.locked ? { locked: true } : {}),
+      ...(definition.static ? { static: true } : {}),
     }
   })
 
-  return compactLayout(projected, profile.columns)
+  return compactGridLayout(projected, compaction, {
+    columns: profile.columns,
+    maxRows: profile.maxRows,
+  })
 }
 
 export function commitProfileLayout(
@@ -263,4 +278,16 @@ export function commitProfileLayout(
   }
 
   return { version: 1, items }
+}
+
+export function replaceProfileLayout(
+  value: GridLayoutValue,
+  profile: GridLayoutProfile,
+  placements: Readonly<Record<string, GridPlacement>>
+) {
+  const layout = Object.entries(placements).map(([id, placement]) => ({
+    id,
+    ...placement,
+  }))
+  return commitProfileLayout(value, layout, profile)
 }

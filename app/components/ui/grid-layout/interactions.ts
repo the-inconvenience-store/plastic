@@ -7,10 +7,13 @@ import {
 
 import { describeGridCommit, describeGridPlacement } from "./accessibility"
 import {
+  applyGridConstraints,
   resizePlacementFromDirection,
   resolveMove,
   resolveResize,
   type GridCollision,
+  type GridCompaction,
+  type GridConstraint,
   type GridGeometryItem,
   type GridItemConstraints,
   type GridResizeDirection,
@@ -22,7 +25,10 @@ export type GridPixelDelta = { x: number; y: number }
 export type GridMeasurement = {
   columnWidth: number
   rowHeight: number
-  gap: number
+  gapX: number
+  gapY: number
+  scaleX: number
+  scaleY: number
 }
 
 export type GridInteractionReason = "move" | "resize"
@@ -41,10 +47,30 @@ export type GridResizeMode = "both" | "horizontal" | "vertical" | false
 
 export type GridInteractionConfiguration = GridItemConstraints & {
   resize: GridResizeMode
+  constraints?: readonly GridConstraint[]
+  dragThreshold?: number
+}
+
+export type GridInteractionPhase = "start" | "change" | "end" | "cancel"
+export type GridInteractionDetail = {
+  phase: GridInteractionPhase
+  reason: GridInteractionReason | "drop"
+  itemId: string
+  profile: string
+  initial: Readonly<GridGeometryItem>
+  placement: Readonly<GridGeometryItem>
+  layout: readonly Readonly<GridGeometryItem>[]
+  nativeEvent: Event
 }
 
 export type GridInteractionContext = {
   collision: GridCollision
+  compaction: GridCompaction
+  constraints: readonly GridConstraint[]
+  maxRows?: number
+  visibleRows?: number
+  dragThreshold: number
+  onInteraction?: (detail: GridInteractionDetail) => void
   commit: (
     layout: GridGeometryItem[],
     itemId: string,
@@ -85,8 +111,14 @@ export function pixelsToGridDelta(
   measurement: GridMeasurement
 ) {
   return {
-    columns: Math.round(delta.x / (measurement.columnWidth + measurement.gap)),
-    rows: Math.round(delta.y / (measurement.rowHeight + measurement.gap)),
+    columns: Math.round(
+      delta.x /
+        measurement.scaleX /
+        (measurement.columnWidth + measurement.gapX)
+    ),
+    rows: Math.round(
+      delta.y / measurement.scaleY / (measurement.rowHeight + measurement.gapY)
+    ),
   }
 }
 
@@ -124,27 +156,45 @@ export function useGridInteraction(
       const active = base.find((item) => item.id === id)
       if (!active) throw new Error(`Unknown Grid Layout item: ${id}`)
       if (reason === "move") {
+        const proposed = applyGridConstraints(
+          {
+            column: active.column + columns,
+            row: active.row + rows,
+            width: active.width,
+            height: active.height,
+          },
+          [
+            ...context.constraints,
+            ...(context.configuration.get(id)?.constraints ?? []),
+          ],
+          {
+            item: active,
+            previous: active,
+            layout: base,
+            columns: context.profile.columns,
+            maxRows: context.maxRows,
+            operation: "move",
+            visibleRows: context.visibleRows,
+          }
+        )
         return resolveMove(
           base,
           id,
           {
-            column: Math.max(
-              0,
-              Math.min(
-                context.profile.columns - active.width,
-                active.column + columns
-              )
-            ),
-            row: Math.max(0, active.row + rows),
+            column: proposed.column,
+            row: proposed.row,
           },
           context.profile.columns,
-          context.collision
+          context.collision,
+          context.compaction,
+          context.maxRows
         )
       }
 
       const configuration = context.configuration.get(id)
+      const measurement = context.measurement()
       const resize = configuration?.resize ?? "both"
-      const placement = resizePlacementFromDirection(
+      const rawPlacement = resizePlacementFromDirection(
         active,
         resizeDirection,
         {
@@ -154,13 +204,31 @@ export function useGridInteraction(
         context.profile.columns,
         configuration
       )
+      const placement = applyGridConstraints(
+        rawPlacement,
+        [...context.constraints, ...(configuration?.constraints ?? [])],
+        {
+          item: active,
+          previous: active,
+          layout: base,
+          columns: context.profile.columns,
+          maxRows: context.maxRows,
+          operation: "resize",
+          direction: resizeDirection,
+          columnPixels: measurement.columnWidth + measurement.gapX,
+          rowPixels: measurement.rowHeight + measurement.gapY,
+          visibleRows: context.visibleRows,
+        }
+      )
       return resolveResize(
         base,
         id,
         placement,
         context.profile.columns,
         context.collision,
-        configuration
+        configuration,
+        context.compaction,
+        context.maxRows
       )
     },
     [context, id, reason, resizeDirection]
@@ -178,11 +246,39 @@ export function useGridInteraction(
       const baseItem = base.find((item) => item.id === id)
       if (!baseItem) throw new Error(`Unknown Grid Layout item: ${id}`)
       session.current = { base, draft: base, changed: false }
+      let activated = false
+      const threshold =
+        context.configuration.get(id)?.dragThreshold ?? context.dragThreshold
+
+      const emit = (
+        phase: GridInteractionPhase,
+        layout: GridGeometryItem[],
+        nativeEvent: Event
+      ) => {
+        const placement = layout.find((item) => item.id === id)
+        if (!placement) return
+        context.onInteraction?.({
+          phase,
+          reason,
+          itemId: id,
+          profile: context.profile.id,
+          initial: baseItem,
+          placement,
+          layout,
+          nativeEvent,
+        })
+      }
 
       const onMove = (moveEvent: PointerEvent) => {
         const pixelDelta = {
           x: moveEvent.clientX - start.x,
           y: moveEvent.clientY - start.y,
+        }
+        if (!activated && Math.hypot(pixelDelta.x, pixelDelta.y) < threshold)
+          return
+        if (!activated) {
+          activated = true
+          emit("start", base, moveEvent)
         }
         const delta = pixelsToGridDelta(pixelDelta, measurement)
         const next = calculate(base, delta.columns, delta.rows)
@@ -191,6 +287,7 @@ export function useGridInteraction(
         if (!sameLayout(current.draft, next)) {
           current.draft = next
           current.changed = !sameLayout(base, next)
+          emit("change", next, moveEvent)
         }
         if (frame.current !== null) cancelAnimationFrame(frame.current)
         frame.current = requestAnimationFrame(() =>
@@ -212,7 +309,7 @@ export function useGridInteraction(
         window.removeEventListener("pointercancel", cancel)
         if (frame.current !== null) cancelAnimationFrame(frame.current)
       }
-      const finish = () => {
+      const finish = (finishEvent: PointerEvent) => {
         cleanup()
         const current = session.current
         session.current = null
@@ -222,12 +319,19 @@ export function useGridInteraction(
           id
         )
         if (current.changed) context.commit(current.draft, id, reason)
+        if (activated)
+          emit(
+            "end",
+            current.changed ? current.draft : current.base,
+            finishEvent
+          )
       }
-      const cancel = () => {
+      const cancel = (cancelEvent: PointerEvent) => {
         cleanup()
         const current = session.current
         session.current = null
         if (current) context.settlePreview(current.base, id)
+        if (activated) emit("cancel", base, cancelEvent)
       }
 
       window.addEventListener("pointermove", onMove)
@@ -245,6 +349,16 @@ export function useGridInteraction(
         session.current = { base, draft: base, changed: false }
         const active = base.find((item) => item.id === id)
         if (active) {
+          context.onInteraction?.({
+            phase: "start",
+            reason,
+            itemId: id,
+            profile: context.profile.id,
+            initial: active,
+            placement: active,
+            layout: base,
+            nativeEvent: event.nativeEvent,
+          })
           context.setAnnouncement(describeGridPlacement(copy.active, active))
         }
         return
@@ -255,6 +369,18 @@ export function useGridInteraction(
         session.current = null
         context.resetPreview()
         context.setAnnouncement(`Cancelled ${reason} for ${id}.`)
+        const active = context.layout.find((item) => item.id === id)
+        if (active)
+          context.onInteraction?.({
+            phase: "cancel",
+            reason,
+            itemId: id,
+            profile: context.profile.id,
+            initial: active,
+            placement: active,
+            layout: context.layout,
+            nativeEvent: event.nativeEvent,
+          })
         return
       }
       if (event.key === "Enter") {
@@ -264,6 +390,16 @@ export function useGridInteraction(
         if (current.changed) context.commit(current.draft, id, reason)
         const active = current.draft.find((item) => item.id === id)
         if (active) {
+          context.onInteraction?.({
+            phase: "end",
+            reason,
+            itemId: id,
+            profile: context.profile.id,
+            initial: current.base.find((item) => item.id === id) ?? active,
+            placement: active,
+            layout: current.draft,
+            nativeEvent: event.nativeEvent,
+          })
           context.setAnnouncement(describeGridCommit(copy.committed, active))
         }
         return
@@ -283,11 +419,22 @@ export function useGridInteraction(
       event.preventDefault()
       const current = session.current
       const next = calculate(current.draft, delta[0], delta[1])
+      if (sameLayout(current.draft, next)) return
       current.draft = next
       current.changed = !sameLayout(current.base, next)
       context.preview(next)
       const active = next.find((item) => item.id === id)
       if (active) {
+        context.onInteraction?.({
+          phase: "change",
+          reason,
+          itemId: id,
+          profile: context.profile.id,
+          initial: current.base.find((item) => item.id === id) ?? active,
+          placement: active,
+          layout: next,
+          nativeEvent: event.nativeEvent,
+        })
         context.setAnnouncement(describeGridPlacement(copy.active, active))
       }
     },

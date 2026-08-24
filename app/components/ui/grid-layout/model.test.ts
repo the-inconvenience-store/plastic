@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   commitProfileLayout,
+  replaceProfileLayout,
   reconcileGridLayout,
   resolveProfileLayout,
 } from "./model"
@@ -144,26 +145,26 @@ describe("Grid Layout persistence", () => {
     ])
   })
 
-  it("preserves locked item positions while packing responsive layouts", () => {
+  it("preserves static item positions while packing responsive layouts", () => {
     expect(
       resolveProfileLayout(
         {
           version: 1,
           items: {
-            locked: { column: 0, row: 5, width: 4, height: 3 },
+            fixed: { column: 0, row: 5, width: 4, height: 3 },
             revenue: { column: 0, row: 0, width: 4, height: 3 },
           },
         },
-        [{ id: "locked", locked: true }, { id: "revenue" }],
+        [{ id: "fixed", static: true }, { id: "revenue" }],
         { id: "wide", minWidth: 1024, columns: 12 }
       )
     ).toContainEqual({
-      id: "locked",
+      id: "fixed",
       column: 0,
       row: 5,
       width: 4,
       height: 3,
-      locked: true,
+      static: true,
     })
   })
 
@@ -196,6 +197,20 @@ describe("Grid Layout persistence", () => {
       width: 6,
       height: 4,
       overrides: { medium: { column: 1, row: 2 } },
+    })
+  })
+
+  it("atomically replaces one responsive profile through the headless seam", () => {
+    const value = reconcileGridLayout(undefined, [{ id: "revenue" }])
+    const replaced = replaceProfileLayout(
+      value,
+      { id: "compact", minWidth: 0, columns: 2 },
+      { revenue: { column: 1, row: 2, width: 1, height: 4 } }
+    )
+    expect(replaced.items.revenue.overrides?.compact).toEqual({
+      column: 1,
+      row: 2,
+      height: 4,
     })
   })
 

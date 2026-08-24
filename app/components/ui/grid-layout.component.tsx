@@ -25,6 +25,12 @@ export const componentDoc = defineComponentDoc({
       },
       { title: "Persisted value", name: "GridLayoutValue" },
       { title: "Change detail", name: "GridLayoutChangeDetail" },
+      { title: "Viewport", name: "GridLayoutViewport" },
+      { title: "Interaction", name: "GridInteractionDetail" },
+      { title: "Compaction", name: "GridCompaction" },
+      { title: "Constraint", name: "GridConstraint" },
+      { title: "Headless engine", name: "GridLayoutEngineOptions" },
+      { title: "Controller", name: "GridLayoutController" },
     ],
   },
   preview: {
@@ -48,13 +54,43 @@ export function Dashboard() {
           Resize filters
         </GridLayout.ResizeAnchor>
       </GridLayout.Item>
-      <GridLayout.Item id="orders" locked>
+      <GridLayout.Item id="orders" static>
         <section>Orders</section>
       </GridLayout.Item>
     </GridLayout>
   )
 }`,
     sections: [
+      {
+        title: "Layout policies",
+        markdown:
+          'Choose `collision="push"`, `"block"`, or `"overlap"` independently from `compaction="vertical"`, `"horizontal"`, `"wrap"`, or `"none"`. A pure custom compactor can implement application-specific packing. Overlapping items use the item `layer` prop for deterministic paint order.',
+      },
+      {
+        title: "Constraints",
+        markdown:
+          "Compose root and item constraints with `gridLayout.constraints`. Built-ins cover grid/container bounds, axis bounds, aspect ratios, and snapping. Root constraints run before item constraints and hard column/row bounds are reapplied last.",
+      },
+      {
+        title: "External drops",
+        markdown:
+          "Pass `drop={{ item, onDrop }}` to accept native drag payloads from a palette. `item` decodes the payload and supplies its initial span; the grid renders a collision-aware placeholder and `onDrop` tells the application to add the corresponding declarative item.",
+      },
+      {
+        title: "Responsive control and sizing",
+        markdown:
+          "Use `profile` to control the active profile, `defaultProfile` for the uncontrolled initial profile, and the width/profile callbacks for orchestration. An optional `controllerRef` atomically replaces one profile layout without taking over the DOM ref. `viewport` groups row height, independent x/y gaps, padding, `maxRows`, content or fixed height, and automatic or explicit transform scale. Profiles can override sizing and compaction.",
+      },
+      {
+        title: "Interaction lifecycle",
+        markdown:
+          "`onInteraction` receives ordered `start`, `change`, `end`, and `cancel` events for pointer and keyboard movement/resizing and external drops. `onLayoutChange` remains commit-only. Configure activation and selector integration with root `drag`, or item `dragThreshold`, `dragHandle`, and `dragCancel`.",
+      },
+      {
+        title: "Headless usage",
+        markdown:
+          "Use `gridLayout.create()` or `useGridLayoutEngine()` when rendering outside the compound component. The same non-mutating transition, compaction, collision, constraint, projection, and profile-replacement operations power the React adapter.",
+      },
       {
         title: "Persistence",
         markdown:
@@ -81,6 +117,11 @@ export function Dashboard() {
           "Pointer dragging and resizing track the gesture directly, while displaced items and release states use short, interruptible transform transitions. Keyboard changes remain immediate, and `prefers-reduced-motion: reduce` disables spatial interpolation.",
       },
       {
+        title: "Static items",
+        markdown:
+          "Set `static` on an individual `GridLayout.Item` to keep its position and size fixed while surrounding items remain interactive and resolve collisions around it. Static items expose no drag or resize controls. Static status remains declarative on the item, while persisted layout snapshots continue to contain geometry only.",
+      },
+      {
         title: "Read-only layouts",
         markdown:
           "Use `GridLayout.Static` when the same persisted layout should render without editing controls.",
@@ -93,8 +134,16 @@ export function Dashboard() {
     ],
   },
   controls: {
-    collision: { control: "inline-radio", options: ["push", "block"] },
+    collision: {
+      control: "inline-radio",
+      options: ["push", "block", "overlap"],
+    },
+    compaction: {
+      control: "inline-radio",
+      options: ["vertical", "horizontal", "wrap", "none"],
+    },
     editable: { control: "boolean" },
+    staticActivity: { control: "boolean" },
   },
   variants: [
     {
@@ -381,8 +430,27 @@ export function Dashboard() {
       },
     },
     {
-      id: "static",
-      title: "Static",
+      id: "static-item",
+      title: "Static item",
+      fixed: { collision: "push", editable: true, staticActivity: true },
+      storybook: {
+        play: async ({ canvas }) => {
+          const { expect } = await import("storybook/test")
+          await expect(
+            canvas.queryByRole("button", { name: "Move Activity" })
+          ).not.toBeInTheDocument()
+          await expect(
+            canvas.queryByRole("button", { name: /Resize Activity/ })
+          ).not.toBeInTheDocument()
+          await expect(
+            canvas.getByRole("button", { name: "Move Revenue" })
+          ).toBeInTheDocument()
+        },
+      },
+    },
+    {
+      id: "read-only",
+      title: "Read only",
       fixed: { editable: false },
       storybook: {
         play: async ({ canvas }) => {
@@ -408,6 +476,10 @@ export function Dashboard() {
       },
       {
         path: "app/components/ui/grid-layout/geometry.ts",
+        type: "registry:lib",
+      },
+      {
+        path: "app/components/ui/grid-layout/engine.ts",
         type: "registry:lib",
       },
       {

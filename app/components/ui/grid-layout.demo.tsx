@@ -9,18 +9,27 @@ import {
   CardHeader,
   CardTitle,
 } from "./card"
-import { GridLayout, type GridLayoutChangeDetail } from "./grid-layout"
+import {
+  GridLayout,
+  type GridCollision,
+  type GridCompactionName,
+  type GridLayoutChangeDetail,
+} from "./grid-layout"
 import { Input } from "./input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./tabs"
 
 export type GridLayoutDemoProps = {
-  collision?: "push" | "block"
+  collision?: GridCollision
+  compaction?: GridCompactionName
   editable?: boolean
+  staticActivity?: boolean
 }
 
 export function GridLayoutDemo({
   collision = "push",
+  compaction = "vertical",
   editable = true,
+  staticActivity = false,
 }: GridLayoutDemoProps) {
   const [lastChange, setLastChange] = useState<GridLayoutChangeDetail | null>(
     null
@@ -30,6 +39,7 @@ export function GridLayoutDemo({
   const rootProps = editable
     ? {
         collision,
+        compaction,
         onLayoutChange: (_layout: unknown, detail: GridLayoutChangeDetail) => {
           setLastChange(detail)
           setChangeCount((count) => count + 1)
@@ -92,11 +102,14 @@ export function GridLayoutDemo({
           id="activity"
           label="Activity"
           initial={{ width: 4, height: 4 }}
+          static={staticActivity}
         >
           <Card className="h-full">
             <CardHeader>
               <CardTitle>Activity</CardTitle>
-              <CardDescription>Recent customer events</CardDescription>
+              <CardDescription>
+                {staticActivity ? "Pinned in place" : "Recent customer events"}
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <Tabs defaultValue="orders">

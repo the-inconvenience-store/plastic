@@ -9,6 +9,7 @@ import {
   use,
   useCallback,
   useEffect,
+  useImperativeHandle,
   useMemo,
   useRef,
   useState,
@@ -24,21 +25,32 @@ import { cn } from "@/lib/utils"
 
 import {
   type GridCollision,
+  type GridCompaction,
+  type GridCompactionName,
+  type GridConstraint,
   type GridGeometryItem,
   type GridItemConstraints,
   type GridPlacement,
   type GridResizeDirection,
+  applyGridConstraints,
+  compactGridLayout,
+  getGridCollisions,
+  gridConstraints,
+  projectPlacement,
+  resolveMove,
 } from "./grid-layout/geometry"
 import {
   getGridFlipTransform,
   parseGridPixelLength,
   useGridInteraction,
   type GridInteractionContext,
+  type GridInteractionDetail,
   type GridInteractionReason,
   type GridPointerPreview,
 } from "./grid-layout/interactions"
 import {
   commitProfileLayout,
+  replaceProfileLayout,
   reconcileGridLayout,
   resolveProfileLayout,
   type GridLayoutItemDefinition,
@@ -49,14 +61,59 @@ import {
   DEFAULT_GRID_LAYOUT_PROFILES,
   selectGridLayoutProfile,
 } from "./grid-layout/responsive"
+import {
+  createGridLayoutEngine,
+  useGridLayoutEngine,
+  type GridLayoutEngineAction,
+  type GridLayoutEngineOptions,
+  type GridLayoutTransition,
+} from "./grid-layout/engine"
 
 export type GridLayoutChangeDetail = {
   itemId: string
   profile: string
-  reason: GridInteractionReason
+  reason: GridInteractionReason | "replace"
+}
+
+export type GridLayoutController = {
+  getLayout: () => GridLayoutValue
+  replaceProfile: (
+    profile: string,
+    placements: Readonly<Record<string, GridPlacement>>
+  ) => void
 }
 
 export type GridLayoutResize = "both" | "horizontal" | "vertical" | false
+export type GridSpacing = number | { x: number; y: number }
+export type GridLayoutViewport = {
+  rowHeight?: number
+  gap?: GridSpacing
+  padding?: GridSpacing
+  maxRows?: number
+  height?: "content" | number
+  scale?: "auto" | number | { x: number; y: number }
+}
+export type GridLayoutDragOptions = {
+  threshold?: number
+  handle?: string
+  cancel?: string
+}
+export type GridLayoutDropItem<Data = unknown> = {
+  id: string
+  width?: number
+  height?: number
+  data?: Data
+}
+export type GridLayoutDropOptions<Data = unknown> = {
+  accept?: string | readonly string[]
+  item: (event: DragEvent) => GridLayoutDropItem<Data> | null
+  onDrop: (detail: {
+    item: GridLayoutDropItem<Data>
+    placement: GridPlacement
+    profile: string
+    nativeEvent: DragEvent
+  }) => void
+}
 
 type SharedGridLayoutProps = Omit<
   ComponentPropsWithRef<"div">,
@@ -66,13 +123,29 @@ type SharedGridLayoutProps = Omit<
   layout?: GridLayoutValue
   defaultLayout?: GridLayoutValue
   profiles?: readonly GridLayoutProfile[]
-  columns?: never
   rowHeight?: number
-  gap?: number
+  gap?: GridSpacing
+  viewport?: GridLayoutViewport
+  profile?: string
+  defaultProfile?: string
+  onProfileChange?: (
+    profile: GridLayoutProfile,
+    detail: { width: number }
+  ) => void
+  onWidthChange?: (
+    width: number,
+    detail: { profile: GridLayoutProfile }
+  ) => void
 }
 
 export type GridLayoutProps = SharedGridLayoutProps & {
+  controllerRef?: Ref<GridLayoutController>
   collision?: GridCollision
+  compaction?: GridCompaction
+  constraints?: readonly GridConstraint[]
+  drag?: GridLayoutDragOptions | false
+  drop?: GridLayoutDropOptions
+  onInteraction?: (detail: GridInteractionDetail) => void
   onLayoutChange?: (
     layout: GridLayoutValue,
     detail: GridLayoutChangeDetail
@@ -86,10 +159,19 @@ export type GridLayoutItemProps = Omit<HTMLAttributes<HTMLDivElement>, "id"> &
     id: string
     initial?: Partial<GridPlacement>
     label?: string
-    locked?: boolean
+    /** Prevents this item from being dragged, resized, or moved by compaction. */
+    static?: boolean
+    draggable?: boolean
     resize?: GridLayoutResize
+    layer?: number
+    constraints?: readonly GridConstraint[]
+    dragThreshold?: number
+    dragHandle?: string
+    dragCancel?: string
     ref?: Ref<HTMLDivElement>
   }
+
+export type GridLayoutEngineItem = GridGeometryItem
 
 export type GridLayoutDragHandleProps = Omit<
   useRender.ComponentProps<"button">,
@@ -106,12 +188,21 @@ export type GridLayoutResizeAnchorProps = Omit<
 type ItemConfiguration = GridLayoutItemDefinition &
   GridItemConstraints & {
     label?: string
-    locked?: boolean
+    static?: boolean
+    draggable: boolean
+    layer?: number
+    constraints?: readonly GridConstraint[]
+    dragThreshold?: number
+    dragHandle?: string
+    dragCancel?: string
     resize: GridLayoutResize
   }
 
 type GridLayoutContextValue = GridInteractionContext & {
   editable: boolean
+  dragEnabled: boolean
+  dragHandle?: string
+  dragCancel?: string
   motionNodes: Map<string, HTMLDivElement>
   nodes: Map<string, HTMLDivElement>
 }
@@ -119,7 +210,8 @@ type GridLayoutContextValue = GridInteractionContext & {
 type GridLayoutItemContextValue = {
   id: string
   label: string
-  locked: boolean
+  static: boolean
+  draggable: boolean
   resize: GridLayoutResize
 }
 
@@ -152,7 +244,13 @@ function collectItemConfigurations(children: ReactNode): ItemConfiguration[] {
         id: child.props.id,
         initial: child.props.initial,
         label: child.props.label,
-        locked: child.props.locked,
+        static: child.props.static,
+        draggable: child.props.draggable ?? true,
+        layer: child.props.layer,
+        constraints: child.props.constraints,
+        dragThreshold: child.props.dragThreshold,
+        dragHandle: child.props.dragHandle,
+        dragCancel: child.props.dragCancel,
         resize: child.props.resize ?? "both",
         minWidth: child.props.minWidth,
         maxWidth: child.props.maxWidth,
@@ -302,11 +400,78 @@ function placementStyle(
     "--grid-layout-row": item.row,
     "--grid-layout-width": item.width,
     "--grid-layout-height": item.height,
-    left: `calc(var(--grid-layout-column) * ((100% - ${gutters} * var(--grid-layout-gap)) / ${profile.columns} + var(--grid-layout-gap)))`,
-    top: `calc(var(--grid-layout-row) * (var(--grid-layout-row-height) + var(--grid-layout-gap)))`,
-    width: `calc(var(--grid-layout-width) * ((100% - ${gutters} * var(--grid-layout-gap)) / ${profile.columns}) + (var(--grid-layout-width) - 1) * var(--grid-layout-gap))`,
-    height: `calc(var(--grid-layout-height) * var(--grid-layout-row-height) + (var(--grid-layout-height) - 1) * var(--grid-layout-gap))`,
+    left: `calc(var(--grid-layout-padding-x) + var(--grid-layout-column) * ((100% - 2 * var(--grid-layout-padding-x) - ${gutters} * var(--grid-layout-gap-x)) / ${profile.columns} + var(--grid-layout-gap-x)))`,
+    top: `calc(var(--grid-layout-padding-y) + var(--grid-layout-row) * (var(--grid-layout-row-height) + var(--grid-layout-gap-y)))`,
+    width: `calc(var(--grid-layout-width) * ((100% - 2 * var(--grid-layout-padding-x) - ${gutters} * var(--grid-layout-gap-x)) / ${profile.columns}) + (var(--grid-layout-width) - 1) * var(--grid-layout-gap-x))`,
+    height: `calc(var(--grid-layout-height) * var(--grid-layout-row-height) + (var(--grid-layout-height) - 1) * var(--grid-layout-gap-y))`,
   } as CSSProperties
+}
+
+function normalizeSpacing(value: GridSpacing | undefined, fallback: number) {
+  if (typeof value === "number") return { x: value, y: value }
+  return value ?? { x: fallback, y: fallback }
+}
+
+function validateGridLayoutConfiguration(
+  profiles: readonly GridLayoutProfile[],
+  viewport: GridLayoutViewport | undefined,
+  rowHeight: number,
+  gap: GridSpacing
+) {
+  if (profiles.length === 0)
+    throw new Error("Grid Layout requires at least one profile")
+  const ids = new Set<string>()
+  for (const profile of profiles) {
+    if (!profile.id || ids.has(profile.id))
+      throw new Error(`Duplicate Grid Layout profile id: "${profile.id}"`)
+    ids.add(profile.id)
+    if (!Number.isInteger(profile.columns) || profile.columns < 1)
+      throw new Error(
+        `Grid Layout profile "${profile.id}" columns must be positive`
+      )
+    if (!Number.isFinite(profile.minWidth) || profile.minWidth < 0)
+      throw new Error(
+        `Grid Layout profile "${profile.id}" minWidth must be non-negative`
+      )
+  }
+  const height = viewport?.rowHeight ?? rowHeight
+  if (!Number.isFinite(height) || height <= 0)
+    throw new Error("Grid Layout rowHeight must be positive")
+  for (const [name, spacing] of [
+    ["gap", viewport?.gap ?? gap],
+    ["padding", viewport?.padding ?? 0],
+  ] as const) {
+    const value = normalizeSpacing(spacing, 0)
+    if (![value.x, value.y].every((part) => Number.isFinite(part) && part >= 0))
+      throw new Error(`Grid Layout ${name} must be non-negative`)
+  }
+  if (
+    viewport?.maxRows !== undefined &&
+    (!Number.isInteger(viewport.maxRows) || viewport.maxRows < 1)
+  )
+    throw new Error("Grid Layout maxRows must be a positive integer")
+  const scale = viewport?.scale
+  if (scale !== undefined && scale !== "auto") {
+    const value = typeof scale === "number" ? { x: scale, y: scale } : scale
+    if (![value.x, value.y].every((part) => Number.isFinite(part) && part > 0))
+      throw new Error("Grid Layout scale must be positive")
+  }
+}
+
+function matchesScopedSelector(
+  target: EventTarget | null,
+  item: Element,
+  selector?: string
+) {
+  if (!selector || !(target instanceof Element)) return false
+  try {
+    const match = target.closest(selector)
+    return match !== null && item.contains(match)
+  } catch {
+    throw new Error(
+      `Grid Layout configuration contains an invalid selector: ${selector}`
+    )
+  }
 }
 
 function applyPlacementStyle(
@@ -373,16 +538,28 @@ function GridLayoutRoot({
   children,
   className,
   collision = "push",
+  compaction = "vertical",
+  constraints = [],
+  controllerRef,
+  drag = {},
   defaultLayout,
+  defaultProfile,
+  drop,
   gap = 12,
   layout: controlledLayout,
+  onInteraction,
   onLayoutChange,
+  onProfileChange,
+  onWidthChange,
+  profile: controlledProfile,
   profiles = DEFAULT_GRID_LAYOUT_PROFILES,
   rowHeight = 48,
+  viewport,
   style,
   ref,
   ...props
 }: GridLayoutProps & { editable?: boolean }) {
+  validateGridLayoutConfiguration(profiles, viewport, rowHeight, gap)
   const editable = props.editable ?? true
   const { editable: _editable, ...rootProps } = props
   const configurations = useMemo(
@@ -390,10 +567,18 @@ function GridLayoutRoot({
     [children]
   )
   const definitions = configurations.map(
-    ({ id, initial, locked, minWidth, maxWidth, minHeight, maxHeight }) => ({
+    ({
       id,
       initial,
-      locked,
+      static: staticItem,
+      minWidth,
+      maxWidth,
+      minHeight,
+      maxHeight,
+    }) => ({
+      id,
+      initial,
+      static: staticItem,
       minWidth,
       maxWidth,
       minHeight,
@@ -413,12 +598,71 @@ function GridLayoutRoot({
     () => [...profiles].sort((left, right) => left.minWidth - right.minWidth),
     [profiles]
   )
-  const [profile, setProfile] = useState<GridLayoutProfile>(orderedProfiles[0])
-  const resolved = resolveProfileLayout(value, definitions, profile)
+  const initialProfile =
+    orderedProfiles.find(({ id }) => id === defaultProfile) ??
+    orderedProfiles[0]
+  const [uncontrolledProfile, setUncontrolledProfile] =
+    useState<GridLayoutProfile>(initialProfile)
+  const profile = controlledProfile
+    ? orderedProfiles.find(({ id }) => id === controlledProfile)
+    : uncontrolledProfile
+  if (!profile)
+    throw new Error(`Unknown Grid Layout profile: ${controlledProfile}`)
+  const activeCompaction = profile.compaction ?? compaction
+  const activeGap = normalizeSpacing(profile.gap ?? viewport?.gap ?? gap, 12)
+  const activePadding = normalizeSpacing(
+    profile.padding ?? viewport?.padding,
+    0
+  )
+  const activeRowHeight = profile.rowHeight ?? viewport?.rowHeight ?? rowHeight
+  const activeMaxRows = profile.maxRows ?? viewport?.maxRows
+  const activeVisibleRows =
+    typeof viewport?.height === "number"
+      ? Math.max(
+          1,
+          Math.floor(
+            (viewport.height - activePadding.y * 2 + activeGap.y) /
+              (activeRowHeight + activeGap.y)
+          )
+        )
+      : undefined
+  const resolved = resolveProfileLayout(
+    value,
+    definitions,
+    profile,
+    activeCompaction
+  )
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [nodes] = useState(() => new Map<string, HTMLDivElement>())
   const [motionNodes] = useState(() => new Map<string, HTMLDivElement>())
   const [announcement, setAnnouncement] = useState("")
+  const observedWidth = useRef<number | null>(null)
+  const observedProfile = useRef(profile.id)
+  const [dropPreview, setDropPreview] = useState<{
+    item: GridLayoutDropItem
+    placement: GridGeometryItem
+    layout: GridGeometryItem[]
+  } | null>(null)
+
+  useImperativeHandle(
+    controllerRef,
+    () => ({
+      getLayout: () => value,
+      replaceProfile: (profileId, placements) => {
+        const target = orderedProfiles.find(({ id }) => id === profileId)
+        if (!target)
+          throw new Error(`Unknown Grid Layout profile: ${profileId}`)
+        const next = replaceProfileLayout(value, target, placements)
+        if (controlledLayout === undefined) setUncontrolledLayout(next)
+        onLayoutChange?.(next, {
+          itemId: "*",
+          profile: profileId,
+          reason: "replace",
+        })
+      },
+    }),
+    [controlledLayout, onLayoutChange, orderedProfiles, value]
+  )
   const visualLayout = useRef(resolved)
   const motionAnimations = useRef(new Map<string, Animation>())
 
@@ -435,13 +679,29 @@ function GridLayoutRoot({
     const container = containerRef.current
     if (!container) return
     const observer = new ResizeObserver(([entry]) => {
-      setProfile(
-        selectGridLayoutProfile(orderedProfiles, entry.contentRect.width)
-      )
+      const width = entry.contentRect.width
+      const selected = controlledProfile
+        ? profile
+        : selectGridLayoutProfile(orderedProfiles, width)
+      if (observedWidth.current !== width) {
+        observedWidth.current = width
+        onWidthChange?.(width, { profile: selected })
+      }
+      if (selected.id !== observedProfile.current) {
+        observedProfile.current = selected.id
+        if (!controlledProfile) setUncontrolledProfile(selected)
+        onProfileChange?.(selected, { width })
+      }
     })
     observer.observe(container)
     return () => observer.disconnect()
-  }, [orderedProfiles])
+  }, [
+    controlledProfile,
+    onProfileChange,
+    onWidthChange,
+    orderedProfiles,
+    profile,
+  ])
 
   useEffect(() => {
     visualLayout.current = resolved
@@ -512,10 +772,12 @@ function GridLayoutRoot({
         ...nextLayout.map((item) => item.row + item.height)
       )
       if (containerRef.current) {
-        containerRef.current.style.height = `calc(${bottom} * var(--grid-layout-row-height) + ${Math.max(0, bottom - 1)} * var(--grid-layout-gap))`
+        if (viewport?.height === undefined || viewport.height === "content") {
+          containerRef.current.style.height = `calc(2 * var(--grid-layout-padding-y) + ${bottom} * var(--grid-layout-row-height) + ${Math.max(0, bottom - 1)} * var(--grid-layout-gap-y))`
+        }
       }
     },
-    [nodes, profile]
+    [nodes, profile, viewport]
   )
 
   const applyPreview = useCallback(
@@ -571,8 +833,8 @@ function GridLayoutRoot({
         (item) => item.id === pointer.itemId
       )
       if (activeNode && activeMotionNode && activePlacement) {
-        const stepX = pointer.measurement.columnWidth + pointer.measurement.gap
-        const stepY = pointer.measurement.rowHeight + pointer.measurement.gap
+        const stepX = pointer.measurement.columnWidth + pointer.measurement.gapX
+        const stepY = pointer.measurement.rowHeight + pointer.measurement.gapY
         const actualColumns = activePlacement.column - pointer.baseItem.column
         const actualRows = activePlacement.row - pointer.baseItem.row
 
@@ -589,17 +851,17 @@ function GridLayoutRoot({
           const baseWidth = gridSpanPixels(
             pointer.baseItem.width,
             pointer.measurement.columnWidth,
-            pointer.measurement.gap
+            pointer.measurement.gapX
           )
           const baseHeight = gridSpanPixels(
             pointer.baseItem.height,
             pointer.measurement.rowHeight,
-            pointer.measurement.gap
+            pointer.measurement.gapX
           )
           const minimumWidth = gridSpanPixels(
             itemConfiguration?.minWidth ?? 1,
             pointer.measurement.columnWidth,
-            pointer.measurement.gap
+            pointer.measurement.gapX
           )
           const maximumWidth = gridSpanPixels(
             Math.min(
@@ -609,12 +871,12 @@ function GridLayoutRoot({
                 : profile.columns - pointer.baseItem.column
             ),
             pointer.measurement.columnWidth,
-            pointer.measurement.gap
+            pointer.measurement.gapX
           )
           const minimumHeight = gridSpanPixels(
             itemConfiguration?.minHeight ?? 1,
             pointer.measurement.rowHeight,
-            pointer.measurement.gap
+            pointer.measurement.gapY
           )
           const maximumHeightInRows = Math.min(
             itemConfiguration?.maxHeight ?? Number.POSITIVE_INFINITY,
@@ -626,7 +888,7 @@ function GridLayoutRoot({
             ? gridSpanPixels(
                 maximumHeightInRows,
                 pointer.measurement.rowHeight,
-                pointer.measurement.gap
+                pointer.measurement.gapY
               )
             : Number.POSITIVE_INFINITY
           const liveWidth = clamp(
@@ -755,29 +1017,63 @@ function GridLayoutRoot({
   const context = useMemo<GridLayoutContextValue>(
     () => ({
       collision,
+      compaction: activeCompaction,
+      constraints,
+      maxRows: activeMaxRows,
+      visibleRows: activeVisibleRows,
+      dragThreshold:
+        drag === false ? Number.POSITIVE_INFINITY : (drag.threshold ?? 3),
+      onInteraction,
       commit,
       configuration,
       editable,
+      dragEnabled: drag !== false,
+      dragHandle: drag === false ? undefined : drag.handle,
+      dragCancel: drag === false ? undefined : drag.cancel,
       layout: resolved,
       measurement: () => {
         const container = containerRef.current
-        const width = container?.clientWidth ?? 0
+        const width = Math.max(
+          0,
+          (container?.clientWidth ?? 0) - activePadding.x * 2
+        )
         const computed = container ? getComputedStyle(container) : null
         const gapValue = computed?.getPropertyValue("--grid-layout-gap")
         const rowHeightValue = computed?.getPropertyValue(
           "--grid-layout-row-height"
         )
-        const activeGap = gapValue
+        const computedGapX = gapValue
           ? parseGridPixelLength(gapValue, "--grid-layout-gap")
-          : gap
-        const activeRowHeight = rowHeightValue
+          : activeGap.x
+        const computedRowHeight = rowHeightValue
           ? parseGridPixelLength(rowHeightValue, "--grid-layout-row-height")
-          : rowHeight
+          : activeRowHeight
+        const explicitScale = viewport?.scale
+        const rect = container?.getBoundingClientRect()
+        const automaticScale = {
+          x:
+            container?.offsetWidth && rect
+              ? rect.width / container.offsetWidth
+              : 1,
+          y:
+            container?.offsetHeight && rect
+              ? rect.height / container.offsetHeight
+              : 1,
+        }
+        const scale =
+          typeof explicitScale === "number"
+            ? { x: explicitScale, y: explicitScale }
+            : explicitScale && explicitScale !== "auto"
+              ? explicitScale
+              : automaticScale
         return {
           columnWidth:
-            (width - activeGap * (profile.columns - 1)) / profile.columns,
-          rowHeight: activeRowHeight,
-          gap: activeGap,
+            (width - computedGapX * (profile.columns - 1)) / profile.columns,
+          rowHeight: computedRowHeight,
+          gapX: computedGapX,
+          gapY: activeGap.y,
+          scaleX: scale.x || 1,
+          scaleY: scale.y || 1,
         }
       },
       motionNodes,
@@ -794,17 +1090,114 @@ function GridLayoutRoot({
       commit,
       configuration,
       editable,
-      gap,
+      activeCompaction,
+      activeGap,
+      activeMaxRows,
+      activePadding.x,
+      activeRowHeight,
+      activeVisibleRows,
+      constraints,
+      drag,
       motionNodes,
       nodes,
       profile,
       resolved,
-      rowHeight,
+      onInteraction,
+      viewport?.scale,
       settlePreview,
     ]
   )
   const bottom = Math.max(0, ...resolved.map((item) => item.row + item.height))
-  const height = `calc(${bottom} * var(--grid-layout-row-height) + ${Math.max(0, bottom - 1)} * var(--grid-layout-gap))`
+  const contentHeight = `calc(2 * var(--grid-layout-padding-y) + ${bottom} * var(--grid-layout-row-height) + ${Math.max(0, bottom - 1)} * var(--grid-layout-gap-y))`
+  const height =
+    typeof viewport?.height === "number"
+      ? `${viewport.height}px`
+      : contentHeight
+
+  const readDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!drop) return null
+    const accepted =
+      drop.accept === undefined
+        ? true
+        : (typeof drop.accept === "string" ? [drop.accept] : drop.accept).some(
+            (type) => event.dataTransfer.types.includes(type)
+          )
+    const item = accepted ? drop.item(event.nativeEvent) : null
+    if (item && resolved.some(({ id }) => id === item.id)) {
+      throw new Error(`Duplicate Grid Layout item id: "${item.id}"`)
+    }
+    return item
+  }
+
+  const updateDropPreview = (event: React.DragEvent<HTMLDivElement>) => {
+    const candidate = readDrop(event)
+    if (!candidate) return
+    event.preventDefault()
+    const rect = event.currentTarget.getBoundingClientRect()
+    const measurement = context.measurement()
+    const proposed = applyGridConstraints(
+      {
+        column: Math.round(
+          (event.clientX - rect.left - activePadding.x) /
+            measurement.scaleX /
+            (measurement.columnWidth + measurement.gapX)
+        ),
+        row: Math.round(
+          (event.clientY - rect.top - activePadding.y) /
+            measurement.scaleY /
+            (measurement.rowHeight + measurement.gapY)
+        ),
+        width: candidate.width ?? 1,
+        height: candidate.height ?? 1,
+      },
+      constraints,
+      {
+        item: {
+          id: candidate.id,
+          column: 0,
+          row: 0,
+          width: candidate.width ?? 1,
+          height: candidate.height ?? 1,
+        },
+        previous: {
+          column: 0,
+          row: 0,
+          width: candidate.width ?? 1,
+          height: candidate.height ?? 1,
+        },
+        layout: resolved,
+        columns: profile.columns,
+        maxRows: activeMaxRows,
+        operation: "drop",
+        visibleRows: activeVisibleRows,
+      }
+    )
+    const withCandidate = [...resolved, { id: candidate.id, ...proposed }]
+    const next = resolveMove(
+      withCandidate,
+      candidate.id,
+      proposed,
+      profile.columns,
+      collision,
+      activeCompaction,
+      activeMaxRows
+    )
+    const placement = next.find((item) => item.id === candidate.id)
+    if (placement) {
+      const phase = dropPreview ? "change" : "start"
+      onInteraction?.({
+        phase,
+        reason: "drop",
+        itemId: candidate.id,
+        profile: profile.id,
+        initial: dropPreview?.placement ?? placement,
+        placement,
+        layout: next,
+        nativeEvent: event.nativeEvent,
+      })
+      setDropPreview({ item: candidate, placement, layout: next })
+    }
+  }
 
   return (
     <GridContext value={context}>
@@ -816,15 +1209,72 @@ function GridLayoutRoot({
         className={cn("relative w-full", className)}
         style={
           {
-            "--grid-layout-row-height": `${rowHeight}px`,
-            "--grid-layout-gap": `${gap}px`,
+            "--grid-layout-row-height": `${activeRowHeight}px`,
+            "--grid-layout-gap": `${activeGap.x}px`,
+            "--grid-layout-gap-x": `${activeGap.x}px`,
+            "--grid-layout-gap-y": `${activeGap.y}px`,
+            "--grid-layout-padding-x": `${activePadding.x}px`,
+            "--grid-layout-padding-y": `${activePadding.y}px`,
             ...style,
             height,
           } as CSSProperties
         }
         {...rootProps}
+        onDragOver={(event) => {
+          rootProps.onDragOver?.(event)
+          if (!event.defaultPrevented) updateDropPreview(event)
+        }}
+        onDragLeave={(event) => {
+          rootProps.onDragLeave?.(event)
+          if (
+            !event.currentTarget.contains(event.relatedTarget as Node | null)
+          ) {
+            if (dropPreview)
+              onInteraction?.({
+                phase: "cancel",
+                reason: "drop",
+                itemId: dropPreview.item.id,
+                profile: profile.id,
+                initial: dropPreview.placement,
+                placement: dropPreview.placement,
+                layout: dropPreview.layout,
+                nativeEvent: event.nativeEvent,
+              })
+            setDropPreview(null)
+          }
+        }}
+        onDrop={(event) => {
+          rootProps.onDrop?.(event)
+          if (!dropPreview || !drop) return
+          event.preventDefault()
+          drop.onDrop({
+            item: dropPreview.item,
+            placement: dropPreview.placement,
+            profile: profile.id,
+            nativeEvent: event.nativeEvent,
+          })
+          onInteraction?.({
+            phase: "end",
+            reason: "drop",
+            itemId: dropPreview.item.id,
+            profile: profile.id,
+            initial: dropPreview.placement,
+            placement: dropPreview.placement,
+            layout: dropPreview.layout,
+            nativeEvent: event.nativeEvent,
+          })
+          setDropPreview(null)
+        }}
       >
         {children}
+        {dropPreview ? (
+          <div
+            aria-hidden="true"
+            data-slot="grid-layout-drop-placeholder"
+            className="pointer-events-none absolute rounded-md border-2 border-dashed border-primary/50 bg-primary/10"
+            style={placementStyle(dropPreview.placement, profile)}
+          />
+        ) : null}
         <div className="sr-only" aria-live="polite" aria-atomic="true">
           {announcement}
         </div>
@@ -839,11 +1289,11 @@ function GridLayoutDragHandle({
   ...props
 }: GridLayoutDragHandleProps) {
   const grid = requireGridContext()
-  const { id, label, locked } = requireItemContext()
+  const { id, label, static: staticItem, draggable } = requireItemContext()
   const interaction = useGridInteraction(grid, id, "move")
 
   return useRender({
-    enabled: grid.editable && !locked,
+    enabled: grid.editable && grid.dragEnabled && !staticItem && draggable,
     defaultTagName: "button",
     render,
     props: {
@@ -867,12 +1317,12 @@ function GridLayoutResizeAnchor({
   ...props
 }: GridLayoutResizeAnchorProps) {
   const grid = requireGridContext()
-  const { id, label, locked, resize } = requireItemContext()
+  const { id, label, static: staticItem, resize } = requireItemContext()
   const interaction = useGridInteraction(grid, id, "resize", direction)
   const meta = RESIZE_DIRECTION_META[direction]
 
   return useRender({
-    enabled: grid.editable && !locked && resize !== false,
+    enabled: grid.editable && !staticItem && resize !== false,
     defaultTagName: "button",
     render,
     props: {
@@ -891,8 +1341,14 @@ function GridLayoutItem({
   id,
   initial: _initial,
   label = id,
-  locked = false,
+  static: staticProp = false,
+  draggable = true,
   resize = "both",
+  layer,
+  constraints: _constraints,
+  dragThreshold: _dragThreshold,
+  dragHandle,
+  dragCancel,
   minWidth: _minWidth,
   maxWidth: _maxWidth,
   minHeight: _minHeight,
@@ -910,10 +1366,19 @@ function GridLayoutItem({
   const hasCustomDragHandle = containsDragHandle(children)
   const hasCustomResizeAnchor = containsResizeAnchor(children)
   const defaultDragInteraction = useGridInteraction(context, id, "move")
-  const defaultDragEnabled = context.editable && !locked && !hasCustomDragHandle
+  const defaultDragEnabled =
+    context.editable &&
+    context.dragEnabled &&
+    !staticProp &&
+    draggable &&
+    !hasCustomDragHandle
+  const activeDragHandle = dragHandle ?? context.dragHandle
+  const activeDragCancel = dragCancel ?? context.dragCancel
 
   return (
-    <GridItemContext value={{ id, label, locked, resize }}>
+    <GridItemContext
+      value={{ id, label, static: staticProp, draggable, resize }}
+    >
       <div
         ref={(node) => {
           if (node) context.nodes.set(id, node)
@@ -922,7 +1387,7 @@ function GridLayoutItem({
         data-slot="grid-layout-positioner"
         data-grid-layout-positioner={id}
         className="absolute"
-        style={placementStyle(placement, context.profile)}
+        style={{ ...placementStyle(placement, context.profile), zIndex: layer }}
       >
         <div
           ref={(node) => {
@@ -933,7 +1398,7 @@ function GridLayoutItem({
           }}
           data-slot="grid-layout-item"
           data-grid-layout-id={id}
-          data-locked={locked ? "" : undefined}
+          data-static={staticProp ? "" : undefined}
           data-drag-surface={defaultDragEnabled ? "" : undefined}
           className={cn(
             "size-full",
@@ -947,7 +1412,18 @@ function GridLayoutItem({
             if (
               event.defaultPrevented ||
               !defaultDragEnabled ||
-              isDefaultDragExcluded(event.target)
+              isDefaultDragExcluded(event.target) ||
+              matchesScopedSelector(
+                event.target,
+                event.currentTarget,
+                activeDragCancel
+              ) ||
+              (activeDragHandle !== undefined &&
+                !matchesScopedSelector(
+                  event.target,
+                  event.currentTarget,
+                  activeDragHandle
+                ))
             ) {
               return
             }
@@ -962,7 +1438,7 @@ function GridLayoutItem({
             </GridLayoutDragHandle>
           ) : null}
           {context.editable &&
-          !locked &&
+          !staticProp &&
           resize !== false &&
           !hasCustomResizeAnchor
             ? RESIZE_DIRECTIONS[resize].map((direction) => (
@@ -1006,10 +1482,31 @@ const GridLayout = Object.assign(
   }
 ) as GridLayoutCompound
 
+const gridLayout = {
+  create: createGridLayoutEngine,
+  compact: compactGridLayout,
+  collisions: getGridCollisions,
+  constrain: applyGridConstraints,
+  project: projectPlacement,
+  replaceProfile: replaceProfileLayout,
+  constraints: gridConstraints,
+}
+
 export {
   GridLayout,
+  gridLayout,
+  useGridLayoutEngine,
   type GridResizeDirection,
   type GridLayoutItemDefinition,
   type GridLayoutProfile,
   type GridLayoutValue,
+  type GridLayoutEngineAction,
+  type GridLayoutEngineOptions,
+  type GridLayoutTransition,
+  type GridInteractionDetail,
+  type GridCollision,
+  type GridCompaction,
+  type GridCompactionName,
+  type GridConstraint,
+  type GridPlacement,
 }

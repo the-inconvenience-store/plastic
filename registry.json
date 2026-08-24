@@ -26,6 +26,10 @@
           "type": "registry:lib"
         },
         {
+          "path": "app/components/ui/grid-layout/engine.ts",
+          "type": "registry:lib"
+        },
+        {
           "path": "app/components/ui/grid-layout/interactions.ts",
           "type": "registry:lib"
         },

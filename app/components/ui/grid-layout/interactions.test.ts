@@ -11,7 +11,14 @@ describe("Grid Layout pointer math", () => {
     expect(
       pixelsToGridDelta(
         { x: 126, y: 121 },
-        { columnWidth: 52, rowHeight: 48, gap: 12 }
+        {
+          columnWidth: 52,
+          rowHeight: 48,
+          gapX: 12,
+          gapY: 12,
+          scaleX: 1,
+          scaleY: 1,
+        }
       )
     ).toEqual({ columns: 2, rows: 2 })
   })
@@ -22,6 +29,22 @@ describe("Grid Layout pointer math", () => {
     expect(() => parseGridPixelLength("0.75rem", "--grid-layout-gap")).toThrow(
       "--grid-layout-gap must be expressed in pixels"
     )
+  })
+
+  it("corrects pointer projection for independently scaled containers", () => {
+    expect(
+      pixelsToGridDelta(
+        { x: 64, y: 120 },
+        {
+          columnWidth: 52,
+          rowHeight: 48,
+          gapX: 12,
+          gapY: 12,
+          scaleX: 0.5,
+          scaleY: 2,
+        }
+      )
+    ).toEqual({ columns: 2, rows: 1 })
   })
 
   it("describes a compositor-only FLIP transition between grid placements", () => {

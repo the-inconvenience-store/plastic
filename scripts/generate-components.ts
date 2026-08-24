@@ -144,7 +144,7 @@ ${stories}
 `
 }
 
-function renderFumadocsStory(doc: LoadedDoc) {
+function renderFumadocsStory(doc: LoadedDoc, source: string) {
   const preview = doc.preview ?? doc.source
   const variants = doc.variants
     .filter((variant) => variant.docs !== false)
@@ -163,6 +163,8 @@ import { ${preview.exportName} } from ${quote(`@/${preview.path.replace(/^app\//
 export const story = defineStory({
   Component: ${preview.exportName},
   args: ${quote(variants)},
+  filename: ${quote(preview.path.split("/").at(-1))},
+  source: ${quote(source.trim())},
 })
 `
 }
@@ -195,7 +197,7 @@ description: ${doc.description}
 
 import { story } from "@/.generated/fumadocs/${doc.name}.story.tsx";
 
-<story.WithControl />
+<story.WithPreview />
 
 ## Installation
 
@@ -209,11 +211,11 @@ bunx --bun shadcn@latest add ${installAddress}
 ${doc.docs.usage}
 \`\`\`
 
+${sections}
+
 ## API
 
 ${apiTables}
-
-${sections}
 `
 }
 
@@ -228,6 +230,8 @@ async function writeGeneratedFiles(manifests: LoadedManifest[]) {
 
   for (const { doc, path: manifestPath } of manifests) {
     const mdxPath = resolve(root, "content/docs", `${doc.docs.slug}.mdx`)
+    const preview = doc.preview ?? doc.source
+    const previewSource = await Bun.file(resolve(root, preview.path)).text()
     await mkdir(dirname(mdxPath), { recursive: true })
     await Bun.write(
       resolve(storybookDirectory, `${doc.name}.stories.tsx`),
@@ -235,7 +239,7 @@ async function writeGeneratedFiles(manifests: LoadedManifest[]) {
     )
     await Bun.write(
       resolve(generatedStoryDirectory, `${doc.name}.story.tsx`),
-      renderFumadocsStory(doc)
+      renderFumadocsStory(doc, previewSource)
     )
     await Bun.write(mdxPath, renderMdx(doc))
   }
