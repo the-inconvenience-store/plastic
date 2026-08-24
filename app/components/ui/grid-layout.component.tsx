@@ -65,71 +65,91 @@ export function Dashboard() {
         title: "Layout policies",
         markdown:
           'Choose `collision="push"`, `"block"`, or `"overlap"` independently from `compaction="vertical"`, `"horizontal"`, `"wrap"`, or `"none"`. A pure custom compactor can implement application-specific packing. Overlapping items use the item `layer` prop for deterministic paint order.',
+        example: "layout-policies",
       },
       {
         title: "Constraints",
         markdown:
           "Compose root and item constraints with `gridLayout.constraints`. Built-ins cover grid/container bounds, axis bounds, aspect ratios, and snapping. Root constraints run before item constraints and hard column/row bounds are reapplied last.",
+        example: "constraints",
       },
       {
         title: "External drops",
         markdown:
           "Pass `drop={{ item, onDrop }}` to accept native drag payloads from a palette. `item` decodes the payload and supplies its initial span; the grid renders a collision-aware placeholder and `onDrop` tells the application to add the corresponding declarative item.",
+        example: "external-drops",
       },
       {
         title: "Responsive control and sizing",
         markdown:
           "Use `profile` to control the active profile, `defaultProfile` for the uncontrolled initial profile, and the width/profile callbacks for orchestration. An optional `controllerRef` atomically replaces one profile layout without taking over the DOM ref. `viewport` groups row height, independent x/y gaps, padding, `maxRows`, content or fixed height, and automatic or explicit transform scale. Profiles can override sizing and compaction.",
+        example: "responsive-sizing",
       },
       {
         title: "Interaction lifecycle",
         markdown:
           "`onInteraction` receives ordered `start`, `change`, `end`, and `cancel` events for pointer and keyboard movement/resizing and external drops. `onLayoutChange` remains commit-only. Configure activation and selector integration with root `drag`, or item `dragThreshold`, `dragHandle`, and `dragCancel`.",
+        example: "interaction-lifecycle",
       },
       {
         title: "Headless usage",
         markdown:
           "Use `gridLayout.create()` or `useGridLayoutEngine()` when rendering outside the compound component. The same non-mutating transition, compaction, collision, constraint, projection, and profile-replacement operations power the React adapter.",
+        example: "headless",
       },
       {
         title: "Persistence",
         markdown:
           "Use `layout` and `onLayoutChange` for controlled persistence, or `defaultLayout` for local state. The versioned snapshot stores one canonical 12-column layout and sparse overrides for narrower profiles.",
+        example: "persistence",
       },
       {
         title: "Keyboard controls",
         markdown:
           "Focus a move or resize control and press Enter or Space to begin. Arrow keys adjust by one cell, Shift + Arrow adjusts by five, Enter commits, and Escape cancels. The southeast corner is the default resize tab stop; provide a visible `GridLayout.ResizeAnchor` when resize discoverability is important.",
+        example: "keyboard-controls",
       },
       {
         title: "Dragging",
         markdown:
           "Grab any non-interactive part of an item to move it. Buttons, links, inputs, tabs, editable content, and resize controls keep their native interactions; add `data-grid-layout-no-drag` to any other region that should not begin a drag. Add a `GridLayout.DragHandle` child when you want a dedicated move control instead—the custom handle replaces the item's default drag surface.",
+        example: "dragging",
+      },
+      {
+        title: "Disabled interactions",
+        markdown:
+          "Set `draggable={false}` to keep an item resizable while disabling movement, or `resize={false}` to keep it movable while disabling resizing. `static` disables both and also prevents collision or compaction displacement.",
+        example: "drag-disabled",
       },
       {
         title: "Resizing",
         markdown:
           'Items resize directly from their edges and corners. `resize="both"` enables N, NE, E, SE, S, SW, W, and NW; `horizontal` enables E and W; `vertical` enables N and S; and `false` disables resizing. Add one or more `GridLayout.ResizeAnchor` children with a `direction` when you want visible or otherwise custom resize controls; custom anchors replace that item\'s built-in edge hit areas.',
+        example: "resizing",
       },
       {
         title: "Motion",
         markdown:
           "Pointer dragging and resizing track the gesture directly, while displaced items and release states use short, interruptible transform transitions. Keyboard changes remain immediate, and `prefers-reduced-motion: reduce` disables spatial interpolation.",
+        example: "pointer-reflow",
       },
       {
         title: "Static items",
         markdown:
           "Set `static` on an individual `GridLayout.Item` to keep its position and size fixed while surrounding items remain interactive and resolve collisions around it. Static items expose no drag or resize controls. Static status remains declarative on the item, while persisted layout snapshots continue to contain geometry only.",
+        example: "static-item",
       },
       {
         title: "Read-only layouts",
         markdown:
           "Use `GridLayout.Static` when the same persisted layout should render without editing controls.",
+        example: "read-only",
       },
       {
         title: "CSS variables",
         markdown:
           "Set `--grid-layout-row-height` and `--grid-layout-gap` to pixel values on the root to customize its geometry while preserving pointer math. Each item exposes `--grid-layout-column`, `--grid-layout-row`, `--grid-layout-width`, and `--grid-layout-height` for styling and inspection.",
+        example: "css-variables",
       },
     ],
   },
@@ -143,6 +163,14 @@ export function Dashboard() {
       options: ["vertical", "horizontal", "wrap", "none"],
     },
     editable: { control: "boolean" },
+    constrained: { control: "boolean" },
+    draggableRevenue: { control: "boolean" },
+    headless: { control: "boolean" },
+    lifecycle: { control: "boolean" },
+    overlap: { control: "boolean" },
+    palette: { control: "boolean" },
+    persisted: { control: "boolean" },
+    spacious: { control: "boolean" },
     staticActivity: { control: "boolean" },
   },
   variants: [
@@ -328,10 +356,91 @@ export function Dashboard() {
       },
     },
     {
+      id: "layout-policies",
+      title: "Layout policies",
+      fixed: { editable: true, overlap: true },
+    },
+    {
+      id: "constraints",
+      title: "Constraints",
+      fixed: { constrained: true, editable: true },
+    },
+    {
+      id: "external-drops",
+      title: "External drops",
+      fixed: { editable: true, palette: true },
+    },
+    {
+      id: "responsive-sizing",
+      title: "Responsive sizing",
+      fixed: { editable: true, spacious: true },
+      storybook: {
+        parameters: { viewport: { defaultViewport: "tablet" } },
+      },
+    },
+    {
+      id: "interaction-lifecycle",
+      title: "Interaction lifecycle",
+      fixed: { editable: true, lifecycle: true },
+    },
+    {
+      id: "headless",
+      title: "Headless engine",
+      fixed: { headless: true },
+    },
+    {
+      id: "persistence",
+      title: "Persistence",
+      fixed: { editable: true, persisted: true },
+    },
+    {
+      id: "keyboard-controls",
+      title: "Keyboard controls",
+      fixed: { compaction: "none", editable: true },
+      storybook: {
+        play: async ({ canvas, userEvent }) => {
+          const { expect } = await import("storybook/test")
+          const handle = canvas.getByRole("button", { name: "Move Revenue" })
+          await userEvent.click(handle)
+          await userEvent.keyboard("{Enter}{ArrowDown}{Enter}")
+          await expect(canvas.getByTestId("last-change")).toHaveTextContent(
+            "move:revenue:1"
+          )
+        },
+      },
+    },
+    {
+      id: "dragging",
+      title: "Dragging",
+      fixed: { editable: true },
+    },
+    {
+      id: "drag-disabled",
+      title: "Dragging disabled",
+      fixed: { draggableRevenue: false, editable: true },
+      storybook: {
+        play: async ({ canvas }) => {
+          const { expect } = await import("storybook/test")
+          await expect(
+            canvas.queryByRole("button", { name: "Move Revenue" })
+          ).not.toBeInTheDocument()
+          await expect(
+            canvas.getByRole("button", {
+              name: "Resize Revenue from southeast corner",
+            })
+          ).toBeInTheDocument()
+        },
+      },
+    },
+    {
+      id: "resizing",
+      title: "Resizing",
+      fixed: { editable: true },
+    },
+    {
       id: "pointer-reflow",
       title: "Pointer reflow",
       fixed: { collision: "push", editable: true },
-      docs: false,
       storybook: {
         parameters: { viewport: { defaultViewport: "desktop" } },
         play: async ({ canvas, canvasElement, userEvent }) => {
@@ -428,6 +537,11 @@ export function Dashboard() {
           await userEvent.pointer({ keys: "[/MouseLeft]" })
         },
       },
+    },
+    {
+      id: "css-variables",
+      title: "CSS variables",
+      fixed: { editable: true, spacious: true },
     },
     {
       id: "static-item",

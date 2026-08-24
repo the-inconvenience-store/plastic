@@ -37,6 +37,8 @@ export type ComponentDoc<Component extends ElementType> = {
     sections?: Array<{
       title: string
       markdown: string
+      /** Variant id rendered as the live example for this section. */
+      example?: string
     }>
   }
   controls?: Meta<Component>["argTypes"]
