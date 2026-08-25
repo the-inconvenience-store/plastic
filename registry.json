@@ -42,6 +42,26 @@
           "type": "registry:lib"
         }
       ]
+    },
+    {
+      "name": "bloom",
+      "type": "registry:ui",
+      "title": "Bloom",
+      "description": "An iOS-inspired menu whose shadcn trigger physically morphs into its measured content.",
+      "dependencies": [
+        "bloom-menu",
+        "framer-motion"
+      ],
+      "registryDependencies": [
+        "button"
+      ],
+      "files": [
+        {
+          "path": "app/components/ui/bloom.tsx",
+          "type": "registry:ui",
+          "target": "components/ui/bloom.tsx"
+        }
+      ]
     }
   ]
 }
