@@ -110,6 +110,7 @@ function BloomContainer({
   buttonRadius = 8,
   className,
   menuRadius = 12,
+  style,
   ...props
 }: BloomContainerProps) {
   return (
@@ -121,6 +122,12 @@ function BloomContainer({
       )}
       buttonRadius={buttonRadius}
       menuRadius={menuRadius}
+      style={
+        {
+          "--bloom-button-radius": `${buttonRadius}px`,
+          ...style,
+        } as React.CSSProperties
+      }
       {...props}
     />
   )
@@ -139,7 +146,7 @@ function BloomTrigger({
       data-slot="bloom-trigger"
       className={cn(
         buttonVariants({ size, variant }),
-        "bloom-trigger size-full rounded-[inherit]",
+        "bloom-trigger size-full rounded-[var(--bloom-button-radius)]",
         className
       )}
       {...props}

@@ -22,19 +22,23 @@ const docsOptimizedDependencies = [
   "@base-ui/react/dialog",
   "@base-ui/react/direction-provider",
   "@base-ui/react/input",
+  "@base-ui/react/menu",
   "@base-ui/react/navigation-menu",
   "@base-ui/react/popover",
   "@base-ui/react/scroll-area",
   "@base-ui/react/tabs",
   "@base-ui/react/use-render",
   "@fuma-translate/react",
+  "bloom-menu",
   "class-variance-authority",
   "clsx",
   "cnfast",
+  "framer-motion",
   "hast-util-to-jsx-runtime",
   "lucide-react",
   "next-themes",
   "react-grid-layout/core",
+  "react-grid-layout/extras",
   "rehype-raw",
   "remark",
   "remark-rehype",
@@ -47,9 +51,9 @@ const docsOptimizedDependencies = [
 
 export default defineConfig({
   base,
-  cacheDir: isStorybook
-    ? "node_modules/.vite-storybook"
-    : "node_modules/.vite-docs",
+  cacheDir:
+    process.env.DOCS_CACHE_DIR ??
+    (isStorybook ? "node_modules/.vite-storybook" : "node_modules/.vite-docs"),
   plugins: isStorybook
     ? [tailwindcss()]
     : [story(), fumadocsMdx(), tailwindcss(), reactRouter()],
@@ -57,6 +61,7 @@ export default defineConfig({
     include: isStorybook
       ? ["msw-storybook-addon/csf3"]
       : docsOptimizedDependencies,
+    noDiscovery: !isStorybook,
   },
   resolve: {
     alias: {

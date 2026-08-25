@@ -16,6 +16,7 @@
     "storybook": "bun run generate && concurrently -k -n generate,storybook \"bun --watch scripts/generate-components.ts\" \"STORYBOOK=true storybook dev -p 6006\"",
     "build-storybook": "bun run generate && STORYBOOK=true storybook build",
     "test": "bun run test:unit && bun run test-storybook",
+    "test:docs-restart": "bun scripts/test-docs-restart.ts",
     "test:unit": "vitest --config vitest.config.ts run",
     "test-storybook": "bun run generate && STORYBOOK=true vitest --config vite.config.ts --project storybook run",
     "registry:build": "bun run generate && bunx --bun shadcn@latest build registry.json --output public/r",

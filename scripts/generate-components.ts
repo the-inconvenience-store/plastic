@@ -228,7 +228,6 @@ function renderMdx(doc: LoadedDoc) {
     resolve(root, doc.source.path)
   ).replaceAll("\\", "/")
   const typePath = sourcePath.startsWith(".") ? sourcePath : `./${sourcePath}`
-  const installAddress = `${componentDocsConfig.registry.githubAddress}/${doc.name}`
   const apiTables = [
     { title: doc.source.exportName, name: doc.source.propsType },
     ...(doc.source.additionalTypes ?? []),
@@ -269,9 +268,7 @@ import { ${exampleImports} } from "@/.generated/fumadocs/${doc.name}.story.tsx";
 
 ## Installation
 
-\`\`\`sh
-bunx --bun shadcn@latest add ${installAddress}
-\`\`\`
+<RegistryInstallCommand name=${quote(doc.name)} />
 
 ## Usage
 

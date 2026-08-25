@@ -138,6 +138,19 @@ export function Actions() {
           const container = trigger.parentElement?.parentElement
 
           await expect(container).not.toBeNull()
+          const triggerStyle = getComputedStyle(trigger)
+          const containerStyle = getComputedStyle(container!)
+          await expect([
+            triggerStyle.borderTopLeftRadius,
+            triggerStyle.borderTopRightRadius,
+            triggerStyle.borderBottomRightRadius,
+            triggerStyle.borderBottomLeftRadius,
+          ]).toEqual([
+            containerStyle.borderTopLeftRadius,
+            containerStyle.borderTopRightRadius,
+            containerStyle.borderBottomRightRadius,
+            containerStyle.borderBottomLeftRadius,
+          ])
           const closedShadow = getComputedStyle(container!).boxShadow
           const closedShadowColors = closedShadow.match(/rgba\([^)]*\)/g) ?? []
           await expect(
@@ -166,6 +179,7 @@ export function Actions() {
           await expect(canvas.getByTestId("result")).toHaveTextContent(
             "Edit selected"
           )
+          await waitFor(() => expect(page.queryByRole("menu")).toBeNull())
         },
       },
     },
