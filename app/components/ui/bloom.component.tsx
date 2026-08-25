@@ -135,9 +135,33 @@ export function Actions() {
           const trigger = canvas.getByRole("button", {
             name: "Open Bloom menu",
           })
+          const container = trigger.parentElement?.parentElement
+
+          await expect(container).not.toBeNull()
+          const closedShadow = getComputedStyle(container!).boxShadow
+          const closedShadowColors = closedShadow.match(/rgba\([^)]*\)/g) ?? []
+          await expect(
+            closedShadow === "none" ||
+              closedShadowColors.every((color) => color.endsWith(", 0)"))
+          ).toBe(true)
           trigger.focus()
           await userEvent.keyboard("{Enter}")
           await waitFor(() => expect(page.getByRole("menu")).toBeVisible())
+
+          const overlappingFrames: number[] = []
+          for (let frame = 0; frame < 6; frame += 1) {
+            await new Promise(requestAnimationFrame)
+            const style = getComputedStyle(trigger)
+            if (
+              trigger.isConnected &&
+              style.visibility !== "hidden" &&
+              Number(style.opacity) > 0.01
+            ) {
+              overlappingFrames.push(frame)
+            }
+          }
+          await expect(overlappingFrames).toEqual([])
+
           await userEvent.click(page.getByRole("menuitem", { name: "Edit" }))
           await expect(canvas.getByTestId("result")).toHaveTextContent(
             "Edit selected"

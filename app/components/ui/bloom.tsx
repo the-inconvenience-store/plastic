@@ -116,7 +116,7 @@ function BloomContainer({
     <BloomPrimitive.Container
       data-slot="bloom-container"
       className={cn(
-        "bg-popover text-popover-foreground ring-1 ring-foreground/10",
+        "bg-popover text-popover-foreground [&:has(.bloom-trigger):not(:has([role=menu]))]:shadow-none! [&:has([role=menu])_.bloom-trigger]:opacity-0!",
         className
       )}
       buttonRadius={buttonRadius}
@@ -139,7 +139,7 @@ function BloomTrigger({
       data-slot="bloom-trigger"
       className={cn(
         buttonVariants({ size, variant }),
-        "size-full rounded-[inherit]",
+        "bloom-trigger size-full rounded-[inherit]",
         className
       )}
       {...props}
