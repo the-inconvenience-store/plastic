@@ -460,12 +460,9 @@ export function Dashboard() {
           const gap = Number.parseFloat(
             getComputedStyle(grid).getPropertyValue("--grid-layout-gap")
           )
-          const columns =
-            grid.dataset.profile === "wide"
-              ? 12
-              : grid.dataset.profile === "medium"
-                ? 6
-                : 1
+          let columns = 1
+          if (grid.dataset.profile === "wide") columns = 12
+          else if (grid.dataset.profile === "medium") columns = 6
           const columnStep =
             (grid.clientWidth - gap * (columns - 1)) / columns + gap
           const rowStep =

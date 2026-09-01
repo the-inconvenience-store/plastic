@@ -1,0 +1,19 @@
+min_version: 2.1.9
+
+pre-commit:
+  jobs:
+    - name: format staged files
+      glob: "*.{ts,tsx,mdx}"
+      run: bunx prettier --write {staged_files}
+      stage_fixed: true
+    - name: lint staged files
+      glob: "*.{js,jsx,mjs,cjs,ts,tsx}"
+      run: bunx oxlint --deny-warnings {staged_files}
+
+pre-push:
+  parallel: true
+  jobs:
+    - name: typecheck
+      run: bun run typecheck
+    - name: unit tests
+      run: bun run test:unit

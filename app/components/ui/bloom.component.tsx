@@ -138,8 +138,9 @@ export function Actions() {
           const container = trigger.parentElement?.parentElement
 
           await expect(container).not.toBeNull()
+          if (!container) throw new Error("Bloom container was not rendered")
           const triggerStyle = getComputedStyle(trigger)
-          const containerStyle = getComputedStyle(container!)
+          const containerStyle = getComputedStyle(container)
           await expect([
             triggerStyle.borderTopLeftRadius,
             triggerStyle.borderTopRightRadius,
@@ -151,7 +152,7 @@ export function Actions() {
             containerStyle.borderBottomRightRadius,
             containerStyle.borderBottomLeftRadius,
           ])
-          const closedShadow = getComputedStyle(container!).boxShadow
+          const closedShadow = getComputedStyle(container).boxShadow
           const closedShadowColors = closedShadow.match(/rgba\([^)]*\)/g) ?? []
           await expect(
             closedShadow === "none" ||
@@ -249,11 +250,12 @@ export function Actions() {
           }
 
           await expect(panel).not.toBeNull()
+          if (!panel) throw new Error("Bloom panel was not rendered")
           await waitFor(() => {
             const shareRect = share.getBoundingClientRect()
             const copyRect = copyLink.getBoundingClientRect()
             const emailRect = email.getBoundingClientRect()
-            const panelRect = panel!.getBoundingClientRect()
+            const panelRect = panel.getBoundingClientRect()
             const insets = [
               shareRect.top - panelRect.top,
               panelRect.right - copyRect.right,

@@ -88,16 +88,14 @@ export function resizePlacementFromDirection(
         item.row + item.height
       )
     : (constraints.maxHeight ?? Number.POSITIVE_INFINITY)
-  const width = clamp(
-    item.width + (east ? delta.columns : west ? -delta.columns : 0),
-    minimumWidth,
-    maximumWidth
-  )
-  const height = clamp(
-    item.height + (south ? delta.rows : north ? -delta.rows : 0),
-    minimumHeight,
-    maximumHeight
-  )
+  let widthDelta = 0
+  if (east) widthDelta = delta.columns
+  else if (west) widthDelta = -delta.columns
+  let heightDelta = 0
+  if (south) heightDelta = delta.rows
+  else if (north) heightDelta = -delta.rows
+  const width = clamp(item.width + widthDelta, minimumWidth, maximumWidth)
+  const height = clamp(item.height + heightDelta, minimumHeight, maximumHeight)
 
   return {
     column: west ? item.column + item.width - width : item.column,
@@ -511,7 +509,9 @@ export function resolveResize(
     return items.map((current) => ({ ...current }))
   }
 
-  const hitsStaticItem = collisions.some((collision) => collision.static)
+  const hitsStaticItem = collisions.some(
+    (collisionItem) => collisionItem.static
+  )
   const resized = hitsStaticItem
     ? proposed
     : proposed.map((layoutItem) =>

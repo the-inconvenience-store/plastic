@@ -21,10 +21,12 @@ export default function handleRequest(
   routerContext: EntryContext,
   _loadContext: RouterContextProvider
 ) {
+  let statusCode = responseStatusCode
+
   if (request.method.toUpperCase() === "HEAD") {
     return new Response(null, {
       headers: responseHeaders,
-      status: responseStatusCode,
+      status: statusCode,
     })
   }
 
@@ -56,12 +58,12 @@ export default function handleRequest(
           resolve(
             new Response(stream, {
               headers: responseHeaders,
-              status: responseStatusCode,
+              status: statusCode,
             })
           )
         },
         onError(error: unknown) {
-          responseStatusCode = 500
+          statusCode = 500
           if (shellRendered) console.error(error)
         },
         onShellError(error: unknown) {

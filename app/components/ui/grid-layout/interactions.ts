@@ -405,16 +405,11 @@ export function useGridInteraction(
         return
       }
       const amount = event.shiftKey ? 5 : 1
-      const delta =
-        event.key === "ArrowLeft"
-          ? [-amount, 0]
-          : event.key === "ArrowRight"
-            ? [amount, 0]
-            : event.key === "ArrowUp"
-              ? [0, -amount]
-              : event.key === "ArrowDown"
-                ? [0, amount]
-                : null
+      let delta: [number, number] | null = null
+      if (event.key === "ArrowLeft") delta = [-amount, 0]
+      else if (event.key === "ArrowRight") delta = [amount, 0]
+      else if (event.key === "ArrowUp") delta = [0, -amount]
+      else if (event.key === "ArrowDown") delta = [0, amount]
       if (!delta) return
       event.preventDefault()
       const current = session.current

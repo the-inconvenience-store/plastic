@@ -3,9 +3,22 @@
   "plugins": [
     "typescript",
     "react",
-    "import"
+    "import",
+    "unicorn",
+    "oxc",
+    "vitest",
+    "jsx-a11y"
   ],
-  "categories": {},
+  "jsPlugins": [
+    {
+      "name": "react-doctor",
+      "specifier": "oxlint-plugin-react-doctor"
+    }
+  ],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error"
+  },
   "env": {
     "builtin": true
   },
@@ -21,8 +34,176 @@
       ]
     }
   },
+  "rules": {
+    "react/react-in-jsx-scope": "off",
+    "import/no-named-as-default-member": "off",
+    "import/no-unassigned-import": "off",
+    "jsx-a11y/prefer-tag-over-role": "off",
+    "unicorn/no-array-sort": "off",
+    "typescript/ban-ts-comment": [
+      "error",
+      {
+        "ts-expect-error": "allow-with-description",
+        "ts-ignore": true,
+        "ts-nocheck": true,
+        "ts-check": false,
+        "minimumDescriptionLength": 3
+      }
+    ],
+    "typescript/no-explicit-any": "error",
+    "typescript/no-non-null-assertion": "error",
+    "typescript/consistent-type-imports": "error",
+    "eqeqeq": ["error", "always", { "null": "ignore" }],
+    "no-nested-ternary": "error",
+    "no-param-reassign": "error",
+    "no-shadow": "error",
+    "no-warning-comments": [
+      "error",
+      {
+        "terms": [
+          "todo",
+          "fixme",
+          "xxx",
+          "hack",
+          "wip",
+          "for now",
+          "implement later",
+          "not implemented"
+        ],
+        "location": "anywhere"
+      }
+    ],
+    "no-console": ["error", { "allow": ["warn", "error"] }],
+    "import/no-cycle": "error",
+    "import/no-duplicates": "error",
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "error",
+    "react/jsx-key": "error",
+    "react/no-array-index-key": "error",
+    "react/no-unstable-nested-components": "error",
+    "react/no-danger": "error",
+    "react/button-has-type": "error",
+    "react/self-closing-comp": "error",
+    "react/jsx-no-useless-fragment": "error",
+    "react-doctor/no-async-effect-callback": "error",
+    "react-doctor/effect-needs-cleanup": "error",
+    "react-doctor/effect-listener-cleanup-mismatch": "error",
+    "react-doctor/effect-observer-needs-disconnect": "error",
+    "react-doctor/effect-raf-loop-needs-cancel": "error",
+    "react-doctor/no-effect-chain": "error",
+    "react-doctor/no-self-updating-effect": "error",
+    "react-doctor/no-set-state-after-await-in-effect": "error",
+    "react-doctor/no-derived-state-effect": "error",
+    "react-doctor/no-mirror-prop-effect": "error",
+    "react-doctor/no-set-state-in-render": "error",
+    "react-doctor/no-direct-state-mutation": "error",
+    "react-doctor/no-ref-current-in-render": "error",
+    "react-doctor/no-random-key": "error",
+    "react-doctor/no-nested-component-definition": "error",
+    "react-doctor/no-nondeterministic-id-value-in-render-body": "error",
+    "react-doctor/no-unguarded-browser-global-in-render-or-hook-init": "error",
+    "react-doctor/no-hydration-branch-on-browser-global": "error",
+    "react-doctor/no-floating-then-in-jsx-handler": "error",
+    "jsx-a11y/alt-text": "error",
+    "jsx-a11y/anchor-has-content": "error",
+    "jsx-a11y/anchor-is-valid": "error",
+    "jsx-a11y/aria-props": "error",
+    "jsx-a11y/aria-role": "error",
+    "jsx-a11y/click-events-have-key-events": "error",
+    "jsx-a11y/heading-has-content": "error",
+    "jsx-a11y/html-has-lang": "error",
+    "jsx-a11y/iframe-has-title": "error",
+    "jsx-a11y/interactive-supports-focus": "error",
+    "jsx-a11y/label-has-associated-control": "error",
+    "jsx-a11y/no-autofocus": "error",
+    "jsx-a11y/no-static-element-interactions": "error",
+    "jsx-a11y/role-has-required-aria-props": "error",
+    "jsx-a11y/tabindex-no-positive": "error",
+    "vitest/no-disabled-tests": "error",
+    "vitest/no-focused-tests": "error",
+    "vitest/no-commented-out-tests": "error",
+    "vitest/expect-expect": "error",
+    "vitest/no-identical-title": "error",
+    "vitest/no-conditional-in-test": "error",
+    "vitest/no-conditional-expect": "error",
+    "vitest/valid-expect": "error",
+    "vitest/prefer-strict-equal": "error",
+    "max-lines": [
+      "error",
+      { "max": 500, "skipBlankLines": true, "skipComments": true }
+    ],
+    "max-lines-per-function": [
+      "error",
+      { "max": 150, "skipBlankLines": true, "skipComments": true }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["scripts/**/*.ts"],
+      "rules": { "no-console": "off" }
+    },
+    {
+      "files": ["**/*.test.{ts,tsx}"],
+      "rules": { "max-lines-per-function": "off" }
+    },
+    {
+      "files": ["**/*.component.tsx"],
+      "rules": {
+        "max-lines": [
+          "error",
+          { "max": 700, "skipBlankLines": true, "skipComments": true }
+        ],
+        "max-lines-per-function": [
+          "error",
+          { "max": 200, "skipBlankLines": true, "skipComments": true }
+        ]
+      }
+    },
+    {
+      "files": ["**/*.demo.tsx"],
+      "rules": {
+        "max-lines-per-function": [
+          "error",
+          { "max": 300, "skipBlankLines": true, "skipComments": true }
+        ]
+      }
+    },
+    {
+      "files": ["app/components/ui/grid-layout.tsx"],
+      "rules": {
+        "max-lines": [
+          "error",
+          { "max": 1600, "skipBlankLines": true, "skipComments": true }
+        ],
+        "max-lines-per-function": [
+          "error",
+          { "max": 800, "skipBlankLines": true, "skipComments": true }
+        ]
+      }
+    },
+    {
+      "files": ["app/components/ui/grid-layout/interactions.ts"],
+      "rules": {
+        "max-lines-per-function": [
+          "error",
+          { "max": 350, "skipBlankLines": true, "skipComments": true }
+        ]
+      }
+    },
+    {
+      "files": ["app/components/ui/grid-layout/geometry.ts"],
+      "rules": {
+        "max-lines": [
+          "error",
+          { "max": 600, "skipBlankLines": true, "skipComments": true }
+        ]
+      }
+    }
+  ],
   "ignorePatterns": [
     "node_modules/",
-    "dist/"
+    "dist/",
+    ".agents/",
+    ".claude/"
   ]
 }

@@ -5,9 +5,12 @@ A shadcn component registry with Fumadocs documentation and a Storybook componen
 ## Develop components
 
 ```sh
-bun install
+bun install --frozen-lockfile
 bun run storybook
 ```
+
+The install also activates the tracked Lefthook git hooks. Pre-commit formats
+and lints staged source files; pre-push runs the typecheck and unit tests.
 
 Keep each component's metadata next to it as `*.component.tsx`. This typed manifest is the only component-specific authoring surface: it defines examples, Storybook tests and parameters, docs guidance, controls, and registry metadata. Storybook stories and Fumadocs Story modules are generated from it and refreshed while either development server is running.
 
@@ -52,13 +55,19 @@ bunx --bun shadcn@latest add the-inconvenience-store/plastic/button
 ## Checks
 
 ```sh
+bun run generate:check
 bun run registry:validate
+bun run format:check
 bun run typecheck
 bun run lint
+bun run test:unit
 bun run test-storybook
 bun run build
 bun run build-storybook
+bun audit
 ```
+
+Pull requests run the complete check and build sequence in GitHub Actions.
 
 ## GitHub Pages
 

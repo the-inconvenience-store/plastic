@@ -20,7 +20,7 @@ describe("Grid Layout pointer math", () => {
           scaleY: 1,
         }
       )
-    ).toEqual({ columns: 2, rows: 2 })
+    ).toStrictEqual({ columns: 2, rows: 2 })
   })
 
   it("accepts pixel custom properties and rejects ambiguous CSS units", () => {
@@ -44,7 +44,7 @@ describe("Grid Layout pointer math", () => {
           scaleY: 2,
         }
       )
-    ).toEqual({ columns: 2, rows: 1 })
+    ).toStrictEqual({ columns: 2, rows: 1 })
   })
 
   it("describes a compositor-only FLIP transition between grid placements", () => {
@@ -53,7 +53,7 @@ describe("Grid Layout pointer math", () => {
         { left: 16, top: 24, width: 100, height: 96 },
         { left: 128, top: 84, width: 212, height: 156 }
       )
-    ).toEqual({
+    ).toStrictEqual({
       x: -112,
       y: -60,
       scaleX: 100 / 212,

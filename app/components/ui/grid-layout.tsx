@@ -218,14 +218,14 @@ type GridLayoutItemContextValue = {
 const GridContext = createContext<GridLayoutContextValue | null>(null)
 const GridItemContext = createContext<GridLayoutItemContextValue | null>(null)
 
-function requireGridContext() {
+function useGridContext() {
   const context = use(GridContext)
   if (!context)
     throw new Error("Grid Layout parts must be rendered inside GridLayout")
   return context
 }
 
-function requireItemContext() {
+function useItemContext() {
   const context = use(GridItemContext)
   if (!context)
     throw new Error(
@@ -891,19 +891,19 @@ function GridLayoutRoot({
                 pointer.measurement.gapY
               )
             : Number.POSITIVE_INFINITY
+          let liveWidthDelta = 0
+          if (east) liveWidthDelta = pointer.pixelDelta.x
+          else if (west) liveWidthDelta = -pointer.pixelDelta.x
+          let liveHeightDelta = 0
+          if (south) liveHeightDelta = pointer.pixelDelta.y
+          else if (north) liveHeightDelta = -pointer.pixelDelta.y
           const liveWidth = clamp(
-            baseWidth +
-              (east ? pointer.pixelDelta.x : west ? -pointer.pixelDelta.x : 0),
+            baseWidth + liveWidthDelta,
             minimumWidth,
             maximumWidth
           )
           const liveHeight = clamp(
-            baseHeight +
-              (south
-                ? pointer.pixelDelta.y
-                : north
-                  ? -pointer.pixelDelta.y
-                  : 0),
+            baseHeight + liveHeightDelta,
             minimumHeight,
             maximumHeight
           )
@@ -1060,12 +1060,12 @@ function GridLayoutRoot({
               ? rect.height / container.offsetHeight
               : 1,
         }
-        const scale =
-          typeof explicitScale === "number"
-            ? { x: explicitScale, y: explicitScale }
-            : explicitScale && explicitScale !== "auto"
-              ? explicitScale
-              : automaticScale
+        let scale = automaticScale
+        if (typeof explicitScale === "number") {
+          scale = { x: explicitScale, y: explicitScale }
+        } else if (explicitScale && explicitScale !== "auto") {
+          scale = explicitScale
+        }
         return {
           columnWidth:
             (width - computedGapX * (profile.columns - 1)) / profile.columns,
@@ -1288,8 +1288,8 @@ function GridLayoutDragHandle({
   className,
   ...props
 }: GridLayoutDragHandleProps) {
-  const grid = requireGridContext()
-  const { id, label, static: staticItem, draggable } = requireItemContext()
+  const grid = useGridContext()
+  const { id, label, static: staticItem, draggable } = useItemContext()
   const interaction = useGridInteraction(grid, id, "move")
 
   return useRender({
@@ -1316,8 +1316,8 @@ function GridLayoutResizeAnchor({
   className,
   ...props
 }: GridLayoutResizeAnchorProps) {
-  const grid = requireGridContext()
-  const { id, label, static: staticItem, resize } = requireItemContext()
+  const grid = useGridContext()
+  const { id, label, static: staticItem, resize } = useItemContext()
   const interaction = useGridInteraction(grid, id, "resize", direction)
   const meta = RESIZE_DIRECTION_META[direction]
 
@@ -1360,7 +1360,7 @@ function GridLayoutItem({
   onPointerDown,
   ...props
 }: GridLayoutItemProps) {
-  const context = requireGridContext()
+  const context = useGridContext()
   const placement = context.layout.find((item) => item.id === id)
   if (!placement) throw new Error(`Unknown Grid Layout item: ${id}`)
   const hasCustomDragHandle = containsDragHandle(children)

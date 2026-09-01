@@ -22,7 +22,7 @@ describe("Grid Layout persistence", () => {
         { id: "orders" },
         { id: "activity" },
       ])
-    ).toEqual({
+    ).toStrictEqual({
       version: 1,
       items: {
         hidden: { column: 0, row: 8, width: 4, height: 3 },
@@ -81,7 +81,7 @@ describe("Grid Layout persistence", () => {
         },
         [{ id: "revenue" }, { id: "orders" }]
       )
-    ).toEqual({
+    ).toStrictEqual({
       version: 1,
       items: {
         revenue: { column: 0, row: 0, width: 12, height: 3 },
@@ -95,7 +95,7 @@ describe("Grid Layout persistence", () => {
       reconcileGridLayout(undefined, [
         { id: "revenue", minWidth: 6, maxWidth: 8, maxHeight: 2 },
       ]).items.revenue
-    ).toEqual({ column: 0, row: 0, width: 6, height: 2 })
+    ).toStrictEqual({ column: 0, row: 0, width: 6, height: 2 })
 
     expect(() =>
       reconcileGridLayout(undefined, [
@@ -125,7 +125,7 @@ describe("Grid Layout persistence", () => {
         minWidth: 640,
         columns: 6,
       })
-    ).toEqual([
+    ).toStrictEqual([
       { id: "revenue", column: 4, row: 0, width: 2, height: 3 },
       { id: "activity", column: 2, row: 0, width: 2, height: 3 },
     ])
@@ -138,7 +138,7 @@ describe("Grid Layout persistence", () => {
       { id: "compact", minWidth: 0, columns: 1 }
     )
 
-    expect(compact.map(({ id, row }) => ({ id, row }))).toEqual([
+    expect(compact.map(({ id, row }) => ({ id, row }))).toStrictEqual([
       { id: "revenue", row: 0 },
       { id: "orders", row: 3 },
       { id: "activity", row: 6 },
@@ -177,7 +177,7 @@ describe("Grid Layout persistence", () => {
       [{ id: "revenue", column: 1, row: 2, width: 2, height: 3 }],
       { id: "medium", minWidth: 640, columns: 6 }
     )
-    expect(medium.items.revenue).toEqual({
+    expect(medium.items.revenue).toStrictEqual({
       column: 0,
       row: 0,
       width: 4,
@@ -191,7 +191,7 @@ describe("Grid Layout persistence", () => {
         [{ id: "revenue", column: 6, row: 1, width: 6, height: 4 }],
         { id: "wide", minWidth: 1024, columns: 12 }
       ).items.revenue
-    ).toEqual({
+    ).toStrictEqual({
       column: 6,
       row: 1,
       width: 6,
@@ -207,7 +207,7 @@ describe("Grid Layout persistence", () => {
       { id: "compact", minWidth: 0, columns: 2 },
       { revenue: { column: 1, row: 2, width: 1, height: 4 } }
     )
-    expect(replaced.items.revenue.overrides?.compact).toEqual({
+    expect(replaced.items.revenue.overrides?.compact).toStrictEqual({
       column: 1,
       row: 2,
       height: 4,

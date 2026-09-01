@@ -140,7 +140,7 @@ export function reconcileGridLayout(
   definitions: readonly GridLayoutItemDefinition[]
 ): GridLayoutValue {
   validateInput(value, definitions)
-  const items = { ...(value?.items ?? {}) }
+  const items = { ...value?.items }
   const occupied = definitions.flatMap((definition) => {
     const item = items[definition.id]
     if (!item) return []
@@ -209,10 +209,14 @@ export function resolveProfileLayout(
   const projected = definitions.map((definition) => {
     const { id } = definition
     const item = reconciled.items[id]
-    const projected = projectPlacement(item, CANONICAL_COLUMNS, profile.columns)
+    const projectedItem = projectPlacement(
+      item,
+      CANONICAL_COLUMNS,
+      profile.columns
+    )
     const override = item.overrides?.[profile.id]
     const constrained = constrainPlacement(
-      { ...projected, ...override },
+      { ...projectedItem, ...override },
       profile.columns,
       definition
     )

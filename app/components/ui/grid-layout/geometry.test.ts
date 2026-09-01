@@ -19,13 +19,15 @@ describe("Grid Layout geometry", () => {
       { id: "fixed", column: 0, row: 1, width: 2, height: 1, static: true },
     ]
 
-    expect(compactGridLayout(items, "none", { columns: 4 })).toEqual(items)
-    expect(compactGridLayout(items, "vertical", { columns: 4 })[1]).toEqual(
-      items[1]
+    expect(compactGridLayout(items, "none", { columns: 4 })).toStrictEqual(
+      items
     )
-    expect(compactGridLayout(items, "horizontal", { columns: 4 })[1]).toEqual(
-      items[1]
-    )
+    expect(
+      compactGridLayout(items, "vertical", { columns: 4 })[1]
+    ).toStrictEqual(items[1])
+    expect(
+      compactGridLayout(items, "horizontal", { columns: 4 })[1]
+    ).toStrictEqual(items[1])
     expect(compactGridLayout(items, "wrap", { columns: 4 })).toHaveLength(2)
   })
 
@@ -43,7 +45,7 @@ describe("Grid Layout geometry", () => {
         operation: "move",
       }
     )
-    expect(result).toEqual({ column: 1, row: 4, width: 3, height: 2 })
+    expect(result).toStrictEqual({ column: 1, row: 4, width: 3, height: 2 })
   })
 
   it("reports overlap without mutating geometry", () => {
@@ -51,9 +53,9 @@ describe("Grid Layout geometry", () => {
       { id: "a", column: 0, row: 0, width: 2, height: 2, layer: 2 },
       { id: "b", column: 1, row: 1, width: 2, height: 2 },
     ]
-    expect(getGridCollisions(items, items[0]).map((item) => item.id)).toEqual([
-      "b",
-    ])
+    expect(
+      getGridCollisions(items, items[0]).map((item) => item.id)
+    ).toStrictEqual(["b"])
     expect(items[0].layer).toBe(2)
   })
 
@@ -74,7 +76,7 @@ describe("Grid Layout geometry", () => {
           operation: "resize",
         }
       )
-    ).toEqual({ column: 0, row: 1, width: 4, height: 4 })
+    ).toStrictEqual({ column: 0, row: 1, width: 4, height: 4 })
   })
   it("projects canonical placements into narrower container profiles", () => {
     const canonical = {
@@ -84,14 +86,14 @@ describe("Grid Layout geometry", () => {
       height: 3,
     }
 
-    expect(projectPlacement(canonical, 12, 6)).toEqual({
+    expect(projectPlacement(canonical, 12, 6)).toStrictEqual({
       column: 4,
       row: 2,
       width: 2,
       height: 3,
     })
 
-    expect(projectPlacement(canonical, 12, 1)).toEqual({
+    expect(projectPlacement(canonical, 12, 1)).toStrictEqual({
       column: 0,
       row: 2,
       width: 1,
@@ -139,7 +141,7 @@ describe("Grid Layout geometry", () => {
       4,
       "push"
     )
-    expect(pushed).toEqual([
+    expect(pushed).toStrictEqual([
       { id: "revenue", column: 2, row: 0, width: 2, height: 2 },
       { id: "orders", column: 2, row: 2, width: 2, height: 2 },
     ])
@@ -151,8 +153,8 @@ describe("Grid Layout geometry", () => {
       4,
       "block"
     )
-    expect(blocked).toEqual(items)
-    expect(items[0]).toEqual({
+    expect(blocked).toStrictEqual(items)
+    expect(items[0]).toStrictEqual({
       id: "revenue",
       column: 0,
       row: 0,
@@ -176,10 +178,10 @@ describe("Grid Layout geometry", () => {
 
     expect(
       resolveMove(items, "fixed", { column: 0, row: 2 }, 4, "push")
-    ).toEqual(items)
+    ).toStrictEqual(items)
     expect(
       resolveMove(items, "moving", { column: 2, row: 0 }, 4, "push")
-    ).toEqual([
+    ).toStrictEqual([
       { id: "moving", column: 2, row: 2, width: 2, height: 2 },
       {
         id: "fixed",
@@ -192,7 +194,7 @@ describe("Grid Layout geometry", () => {
     ])
     expect(
       resolveResize(items, "moving", { width: 4, height: 2 }, 4, "push")
-    ).toEqual([
+    ).toStrictEqual([
       { id: "moving", column: 0, row: 2, width: 4, height: 2 },
       {
         id: "fixed",
@@ -215,14 +217,14 @@ describe("Grid Layout geometry", () => {
       resolveResize(items, "revenue", { width: 5, height: 1 }, 4, "push", {
         minHeight: 2,
       })
-    ).toEqual([
+    ).toStrictEqual([
       { id: "revenue", column: 0, row: 0, width: 4, height: 2 },
       { id: "orders", column: 2, row: 2, width: 2, height: 2 },
     ])
 
     expect(
       resolveResize(items, "revenue", { width: 4, height: 2 }, 4, "block")
-    ).toEqual(items)
+    ).toStrictEqual(items)
   })
 
   it("keeps the opposite edges fixed for directional resizing", () => {
@@ -235,10 +237,10 @@ describe("Grid Layout geometry", () => {
         { columns: -2, rows: -1 },
         12
       )
-    ).toEqual({ column: 0, row: 2, width: 6, height: 4 })
+    ).toStrictEqual({ column: 0, row: 2, width: 6, height: 4 })
     expect(
       resizePlacementFromDirection(placement, "se", { columns: 2, rows: 1 }, 12)
-    ).toEqual({ column: 2, row: 3, width: 6, height: 4 })
+    ).toStrictEqual({ column: 2, row: 3, width: 6, height: 4 })
   })
 
   it("applies a west resize origin to the resolved layout", () => {
@@ -250,7 +252,7 @@ describe("Grid Layout geometry", () => {
         6,
         "push"
       )
-    ).toEqual([{ id: "revenue", column: 1, row: 0, width: 3, height: 2 }])
+    ).toStrictEqual([{ id: "revenue", column: 1, row: 0, width: 3, height: 2 }])
   })
 
   it("does not compact away a north resize origin", () => {
@@ -265,7 +267,7 @@ describe("Grid Layout geometry", () => {
         6,
         "push"
       )
-    ).toEqual([
+    ).toStrictEqual([
       { id: "header", column: 0, row: 0, width: 2, height: 2 },
       { id: "revenue", column: 0, row: 4, width: 2, height: 2 },
     ])
